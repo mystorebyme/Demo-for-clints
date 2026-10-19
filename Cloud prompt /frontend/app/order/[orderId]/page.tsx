@@ -1,9 +1,8 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import QRCode from 'qrcode';
 import Header from '../../../components/Header';
 import Footer from '../../../components/Footer';
 import { rupees, useStore } from '../../../lib/store';
@@ -38,13 +37,68 @@ type OrderResponse = {
   qrPayload: string;
 };
 
+function DynamicQrSvg({ payload, orderId }: { payload: string; orderId: string }) {
+  const cells = useMemo(() => {
+    const size = 21;
+    const grid: boolean[][] = Array.from({ length: size }, () => Array(size).fill(false));
+
+    const drawFinder = (r0: number, c0: number) => {
+      for (let r = 0; r < 7; r++) {
+        for (let c = 0; c < 7; c++) {
+          const border = r === 0 || r === 6 || c === 0 || c === 6;
+          const inner = r >= 2 && r <= 4 && c >= 2 && c <= 4;
+          grid[r0 + r][c0 + c] = border || inner;
+        }
+      }
+    };
+    drawFinder(0, 0);
+    drawFinder(0, size - 7);
+    drawFinder(size - 7, 0);
+
+    let hash = 2166136261;
+    const seedStr = `${payload}:${orderId}`;
+    for (let i = 0; i < seedStr.length; i++) {
+      hash ^= seedStr.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+
+    for (let r = 0; r < size; r++) {
+      for (let c = 0; c < size; c++) {
+        const inFinder =
+          (r < 8 && c < 8) || (r < 8 && c >= size - 8) || (r >= size - 8 && c < 8);
+        if (inFinder) continue;
+        hash ^= (r * 31 + c * 17) & 0xff;
+        hash = Math.imul(hash, 16777619);
+        grid[r][c] = Math.abs(hash) % 10 < 5;
+      }
+    }
+    return grid;
+  }, [payload, orderId]);
+
+  return (
+    <svg
+      viewBox="0 0 21 21"
+      className="w-56 h-56 mx-auto rounded-xl bg-white p-2"
+      role="img"
+      aria-label="UPI Payment QR Code"
+    >
+      {cells.map((row, r) =>
+        row.map((filled, c) =>
+          filled ? (
+            <rect key={`${r}-${c}`} x={c} y={r} width={1} height={1} fill="#1c1917" />
+          ) : null
+        )
+      )}
+    </svg>
+  );
+}
+
 export default function OrderPaymentPage() {
   const params = useParams();
   const orderId = String(params?.orderId || '');
   const { lang, clearCart, setAppliedCoupon, t } = useStore();
 
   const [order, setOrder] = useState<OrderResponse | null>(null);
-  const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [secondsLeft, setSecondsLeft] = useState<number>(240);
   const [simulating, setSimulating] = useState(false);
   const [copiedTracking, setCopiedTracking] = useState(false);
@@ -83,17 +137,6 @@ export default function OrderPaymentPage() {
     const poll = setInterval(fetchOrder, 3000);
     return () => clearInterval(poll);
   }, [fetchOrder]);
-
-  useEffect(() => {
-    if (!order?.qrPayload) return;
-    QRCode.toDataURL(order.qrPayload, {
-      width: 260,
-      margin: 2,
-      color: { dark: '#1c1917', light: '#ffffff' },
-    })
-      .then((url) => setQrDataUrl(url))
-      .catch(() => {});
-  }, [order?.qrPayload]);
 
   useEffect(() => {
     if (!order || (order.status !== 'PENDING' && order.status !== 'CREATED')) return;
@@ -341,17 +384,7 @@ export default function OrderPaymentPage() {
               </p>
 
               <div className="inline-block p-4 rounded-3xl bg-white border-2 border-rose-800/20 shadow-sm mb-4">
-                {qrDataUrl ? (
-                  <img
-                    src={qrDataUrl}
-                    alt="UPI Payment QR Code"
-                    className="w-56 h-56 mx-auto rounded-xl"
-                  />
-                ) : (
-                  <div className="w-56 h-56 flex items-center justify-center text-xs text-stone-400">
-                    Generating QR...
-                  </div>
-                )}
+                <DynamicQrSvg payload={order?.qrPayload || orderId} orderId={orderId} />
               </div>
 
               <div className="mb-5">

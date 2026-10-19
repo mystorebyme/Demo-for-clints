@@ -14,7 +14,7 @@ import {
 import { useStore } from '../lib/store';
 
 export default function HomePage() {
-  const { lang, appliedCoupon, setAppliedCoupon, t } = useStore();
+  const { lang, t } = useStore();
 
   // Products are fetched exclusively from the backend /api/products endpoint (not hardcoded in frontpage code)
   const [products, setProducts] = useState<Product[]>([]);
@@ -64,52 +64,90 @@ export default function HomePage() {
     setPage(1);
   }, [category, query, sort, inStockOnly, sizeFilter]);
 
-  const selectCategoryAndScroll = (cat: ProductCategory | 'all') => {
+  const selectCategoryAndScroll = (
+    cat: ProductCategory | 'all',
+    presetQuery = '',
+    presetSort: SortOption = 'featured'
+  ) => {
     setCategory(cat);
+    setQuery(presetQuery);
+    setSort(presetSort);
     const el = document.getElementById('collection');
     if (el) el.scrollIntoView({ behavior: 'smooth' });
   };
+
+  const storyCircles = [
+    {
+      key: 'suit-anarkali',
+      label: lang === 'hi' ? 'अनारकली व सूट' : 'Anarkali & Suit Set',
+      img: '/products/kurti1.jpg',
+      cat: 'kurti' as const,
+      q: 'Anarkali',
+      sort: 'featured' as SortOption,
+    },
+    {
+      key: 'printed-kurti',
+      label: lang === 'hi' ? 'प्रिंटेड कुर्ता सेट' : 'Printed Kurta Set',
+      img: '/products/kurti2.jpg',
+      cat: 'kurti' as const,
+      q: '',
+      sort: 'featured' as SortOption,
+    },
+    {
+      key: 'bridal-potli',
+      label: lang === 'hi' ? 'ब्राइडल पोटली व बैग्स' : 'Potli & Handbags',
+      img: '/products/bag1.jpg',
+      cat: 'bag' as const,
+      q: '',
+      sort: 'featured' as SortOption,
+    },
+    {
+      key: 'jadau-jewellery',
+      label: lang === 'hi' ? 'जड़ाऊ ज्वेलरी' : 'Jadau & Dupattas',
+      img: '/products/acc3.jpg',
+      cat: 'accessory' as const,
+      q: '',
+      sort: 'featured' as SortOption,
+    },
+    {
+      key: 'new-arrival',
+      label: lang === 'hi' ? 'न्यू अराइवल' : 'New Arrival',
+      img: '/products/kurti3.jpg',
+      cat: 'all' as const,
+      q: '',
+      sort: 'price-desc' as SortOption,
+    },
+    {
+      key: 'best-selling',
+      label: lang === 'hi' ? 'बेस्ट सेलिंग' : 'Best Selling',
+      img: '/products/kurti4.jpg',
+      cat: 'all' as const,
+      q: '',
+      sort: 'rating' as SortOption,
+    },
+  ];
 
   return (
     <div className="min-h-screen flex flex-col bg-[#faf7f2]">
       <Header />
 
-      {/* Mobile-First Quick Category Story Circles */}
-      <div className="md:hidden bg-white border-b border-stone-200 px-3 py-3 overflow-x-auto">
-        <div className="flex items-center justify-between gap-3 min-w-max">
-          {[
-            {
-              id: 'all' as const,
-              label: lang === 'hi' ? 'ऑल कलेक्शन' : 'All Edit',
-              img: '/products/kurti1.jpg',
-            },
-            {
-              id: 'kurti' as const,
-              label: lang === 'hi' ? 'कुर्तियाँ' : 'Kurtis',
-              img: '/products/kurti2.jpg',
-            },
-            {
-              id: 'bag' as const,
-              label: lang === 'hi' ? 'पोटली व बैग्स' : 'Handbags',
-              img: '/products/bag1.jpg',
-            },
-            {
-              id: 'accessory' as const,
-              label: lang === 'hi' ? 'जड़ाऊ ज्वेलरी' : 'Jewellery',
-              img: '/products/acc3.jpg',
-            },
-          ].map((c) => {
-            const active = category === c.id;
+      {/* Curated Collection Story Circles (Inspired by thestoreofbufani.com & jaypore.com) */}
+      <div className="bg-white border-b border-stone-200 px-3 sm:px-6 py-3.5 overflow-x-auto">
+        <div className="max-w-7xl mx-auto flex items-center justify-between sm:justify-center gap-4 sm:gap-8 min-w-max">
+          {storyCircles.map((c) => {
+            const active = category === c.cat && query === c.q && sort === c.sort;
             return (
               <button
-                key={c.id}
+                key={c.key}
                 type="button"
-                onClick={() => selectCategoryAndScroll(c.id)}
-                className="flex flex-col items-center gap-1 group"
+                onClick={() => selectCategoryAndScroll(c.cat, c.q, c.sort)}
+                className="flex flex-col items-center gap-1.5 group"
               >
                 <div
-                  className={`w-16 h-16 rounded-full p-0.5 border-2 transition ${
-                    active ? 'border-rose-900 scale-105' : 'border-amber-400/70'
+                  className={`w-16 h-16 sm:w-20 sm:h-20 rounded-full p-0.5 border-2 transition ${
+                    active
+                      ? 'border-rose-900 scale-105 shadow-md'
+                      : 'border-amber-400/80 group-hover:border-rose-800'
                   }`}
                 >
                   <img
@@ -119,8 +157,8 @@ export default function HomePage() {
                   />
                 </div>
                 <span
-                  className={`text-[11px] font-bold ${
-                    active ? 'text-rose-900 font-extrabold' : 'text-stone-700'
+                  className={`text-[10px] sm:text-xs uppercase tracking-wider font-bold ${
+                    active ? 'text-rose-900 font-extrabold' : 'text-stone-700 group-hover:text-rose-900'
                   }`}
                 >
                   {c.label}
@@ -166,9 +204,9 @@ export default function HomePage() {
             {/* Trust Metrics */}
             <div className="grid grid-cols-3 gap-3 sm:gap-4 pt-4 sm:pt-6 border-t border-white/15 text-[11px] sm:text-xs">
               <div>
-                <p className="text-lg sm:text-2xl font-serif font-bold text-amber-300">100%</p>
+                <p className="text-lg sm:text-2xl font-serif font-bold text-amber-300">216+</p>
                 <p className="text-stone-300 mt-0.5">
-                  {lang === 'hi' ? 'जयपुर हैंडलूम शिल्प' : 'Authentic Artisan Craft'}
+                  {lang === 'hi' ? 'जयपुर हैंडलूम डिज़ाइन' : 'Curated Jaipur Designs'}
                 </p>
               </div>
               <div>
@@ -312,11 +350,11 @@ export default function HomePage() {
                 className="px-3 py-2 rounded-xl border border-stone-300 bg-white text-xs sm:text-sm font-semibold text-stone-700 focus:outline-none focus:ring-2 focus:ring-rose-500"
               >
                 <option value="">{lang === 'hi' ? 'सभी साइज़' : 'All Sizes'}</option>
-                <option value="S">Size: S</option>
-                <option value="M">Size: M</option>
-                <option value="L">Size: L</option>
-                <option value="XL">Size: XL</option>
-                <option value="XXL">Size: XXL</option>
+                <option value="S">Size: S [36]</option>
+                <option value="M">Size: M [38]</option>
+                <option value="L">Size: L [40]</option>
+                <option value="XL">Size: XL [42]</option>
+                <option value="XXL">Size: XXL [44]</option>
                 <option value="Compact">Bag: Compact</option>
                 <option value="Regular">Bag: Regular</option>
                 <option value="Large Bridal">Bag: Large Bridal</option>
@@ -383,6 +421,7 @@ export default function HomePage() {
               onClick={() => {
                 setCategory('all');
                 setQuery('');
+                setSizeFilter('');
                 setInStockOnly(false);
               }}
               className="px-4 py-2 rounded-xl bg-rose-900 text-white text-xs font-semibold"
@@ -485,6 +524,54 @@ export default function HomePage() {
                 </h3>
               </div>
             </button>
+          ))}
+        </div>
+      </section>
+
+      {/* 4-Pillar Service Guarantee Strip (Inspired by thestoreofbufani.com) */}
+      <section className="max-w-7xl mx-auto w-full px-3 sm:px-6 lg:px-8 pb-8">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 bg-stone-950 text-white rounded-3xl p-4 sm:p-6 border border-stone-800 shadow-sm">
+          {[
+            {
+              title: lang === 'hi' ? 'फ्री इंश्योर्ड शिपिंग' : 'ALL INDIA INSURED SHIPPING',
+              desc:
+                lang === 'hi'
+                  ? '₹999+ के सभी ऑर्डर्स पर पैन-इंडिया एक्सप्रेस डिलीवरी'
+                  : 'Free Delhivery / BlueDart Express on orders ₹999+',
+            },
+            {
+              title: lang === 'hi' ? 'स्टोर ओनर डायरेक्ट सपोर्ट' : 'DIRECT ATELIER SUPPORT',
+              desc:
+                lang === 'hi'
+                  ? 'हर आइटम पर सीधे स्टोर ओनर से ईमेल व व्हाट्सएप संपर्क'
+                  : 'Direct inquiry & WhatsApp assistance from our Jaipur guild',
+            },
+            {
+              title: lang === 'hi' ? '7-दिन साइज एक्सचेंज' : 'REPLACEMENT & SIZE EXCHANGE',
+              desc:
+                lang === 'hi'
+                  ? '24x7 CCTV निगरानी में पैकिंग और आसान एक्सचेंज'
+                  : 'Packed under 24x7 CCTV with 7-day size exchange guarantee',
+            },
+            {
+              title: lang === 'hi' ? '100% सुरक्षित पेमेंट व GST बिल' : '100% SECURED & GST BILLED',
+              desc:
+                lang === 'hi'
+                  ? 'वेरीफाइड UPI, कार्ड और तुरंत CGST नियम 46(b) टैक्स इनवॉइस'
+                  : 'Verified UPI / Razorpay & instant CGST Rule 46(b) Tax Invoice',
+            },
+          ].map((item) => (
+            <div
+              key={item.title}
+              className="p-3 sm:p-4 rounded-2xl bg-white/5 border border-white/10"
+            >
+              <p className="text-[11px] sm:text-xs font-extrabold uppercase tracking-wider text-amber-300">
+                {item.title}
+              </p>
+              <p className="text-[11px] sm:text-xs text-stone-300 mt-1 leading-relaxed">
+                {item.desc}
+              </p>
+            </div>
           ))}
         </div>
       </section>

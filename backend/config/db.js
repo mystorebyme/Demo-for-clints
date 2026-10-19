@@ -120,13 +120,13 @@ function createInMemoryPool() {
       return { rows: [], rowCount: 0 };
     }
 
-    if (norm.startsWith('SELECT id, name, name_hi, category, price_paise, image_url, stock FROM products WHERE id = $1')) {
+    if (norm.startsWith('SELECT id, name, name_hi, category, price_paise, image_url, stock FROM products WHERE id = $1') || norm.startsWith('SELECT * FROM products WHERE id = $1')) {
       const id = Number(params[0]);
       const found = state.products.filter((p) => p.id === id);
       return { rows: found, rowCount: found.length };
     }
 
-    if (norm.startsWith('SELECT id, name, name_hi, category, price_paise, image_url, stock FROM products')) {
+    if (norm.startsWith('SELECT id, name, name_hi, category, price_paise, image_url, stock FROM products') || norm.startsWith('SELECT * FROM products')) {
       return { rows: [...state.products].sort((a, b) => a.id - b.id), rowCount: state.products.length };
     }
 

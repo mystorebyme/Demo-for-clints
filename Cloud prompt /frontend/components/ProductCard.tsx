@@ -5,6 +5,23 @@ import Link from 'next/link';
 import { getProductPriceForSize, Product } from '../lib/catalog';
 import { buildWhatsAppShareUrl, rupees, useStore } from '../lib/store';
 
+const BUST_SIZE_MAP: Record<string, string> = {
+  XS: 'XS [34]',
+  S: 'S [36]',
+  M: 'M [38]',
+  L: 'L [40]',
+  XL: 'XL [42]',
+  XXL: 'XXL [44]',
+  '2XL': '2XL [44]',
+};
+
+export function formatEthnicSizeLabel(size: string, category?: string): string {
+  if (category === 'kurti' && BUST_SIZE_MAP[size]) {
+    return BUST_SIZE_MAP[size];
+  }
+  return size;
+}
+
 export default function ProductCard({
   p,
 }: {
@@ -12,6 +29,7 @@ export default function ProductCard({
 }) {
   const { lang, addToCart, wishlist, toggleWishlist, t } = useStore();
   const [justAdded, setJustAdded] = useState(false);
+  const [showAltImage, setShowAltImage] = useState(false);
   const defaultSize = p.sizes?.includes('M') ? 'M' : p.sizes?.[0] || 'Free Size';
   const [selectedSize, setSelectedSize] = useState(defaultSize);
 
@@ -32,6 +50,10 @@ export default function ProductCard({
     activeOriginalPaise && activeOriginalPaise > activePricePaise
       ? Math.round(((activeOriginalPaise - activePricePaise) / activeOriginalPaise) * 100)
       : 0;
+
+  const secondaryImage =
+    p.hover_image_url ||
+    (Array.isArray(p.gallery) && p.gallery.length > 1 ? p.gallery[1] : undefined);
 
   const handleQuickAdd = () => {
     if (isOutOfStock) return;
@@ -58,34 +80,34 @@ export default function ProductCard({
       <div className="relative aspect-[3/4] sm:aspect-[4/5] bg-stone-100 overflow-hidden">
         <Link href={`/products/${p.id}`} className="block w-full h-full relative">
           <img
-            src={p.image_url}
+            src={showAltImage && secondaryImage ? secondaryImage : p.image_url}
             alt={displayName}
             loading="lazy"
             className={`w-full h-full object-cover transition-all duration-700 group-hover:scale-105 ${
-              p.hover_image_url ? 'group-hover:opacity-0' : ''
+              secondaryImage && !showAltImage ? 'sm:group-hover:opacity-0' : ''
             }`}
           />
-          {p.hover_image_url && (
+          {secondaryImage && (
             <img
-              src={p.hover_image_url}
+              src={secondaryImage}
               alt={`${displayName} detail view`}
               loading="lazy"
-              className="absolute inset-0 w-full h-full object-cover opacity-0 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700"
+              className="hidden sm:block absolute inset-0 w-full h-full object-cover opacity-0 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700"
             />
           )}
           <div className="absolute inset-0 bg-gradient-to-t from-stone-950/35 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
         </Link>
 
-        {/* Top Left Badges */}
+        {/* Top Left Badges: Bufani-style -XX% Discount Pill + Editorial Badge */}
         <div className="absolute top-2 left-2 sm:top-3.5 sm:left-3.5 flex flex-col gap-1 z-10">
-          {displayBadge && (
-            <span className="px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[9px] sm:text-[10px] uppercase tracking-wider font-extrabold bg-rose-950/90 text-amber-200 backdrop-blur-sm shadow-sm">
-              {displayBadge}
+          {discountPct > 0 && (
+            <span className="px-2 sm:px-2.5 py-0.5 rounded-full text-[9px] sm:text-[11px] font-extrabold bg-rose-900 text-amber-200 shadow-sm w-fit tracking-wide">
+              -{discountPct}%
             </span>
           )}
-          {discountPct > 0 && (
-            <span className="px-2 py-0.5 rounded-full text-[9px] sm:text-[11px] font-extrabold bg-amber-400 text-stone-950 shadow-sm w-fit">
-              {discountPct}% OFF
+          {displayBadge && (
+            <span className="px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[9px] sm:text-[10px] uppercase tracking-wider font-extrabold bg-stone-950/85 text-white backdrop-blur-sm shadow-sm w-fit">
+              {displayBadge}
             </span>
           )}
         </div>
@@ -116,20 +138,34 @@ export default function ProductCard({
           </svg>
         </button>
 
-        {/* Rating + Stock Pill */}
+        {/* Bottom Overlay: Rating + Mobile Image Flip + Stock Pill */}
         <div className="absolute bottom-2 left-2 right-2 sm:bottom-3 sm:left-3 sm:right-3 z-10 flex items-center justify-between gap-1">
           <span className="px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold bg-white/95 text-stone-900 shadow-sm">
             {p.rating.toFixed(1)} / 5 <span className="text-stone-400 font-normal">({p.reviews_count})</span>
           </span>
-          {isOutOfStock ? (
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-stone-900/90 text-white">
-              {t('outOfStock')}
-            </span>
-          ) : isLowStock ? (
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-600/95 text-white">
-              Only {p.stock} left
-            </span>
-          ) : null}
+          <div className="flex items-center gap-1">
+            {secondaryImage && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  setShowAltImage((v) => !v);
+                }}
+                className="sm:hidden px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-stone-950/80 text-amber-200"
+              >
+                {showAltImage ? '1/2' : '2/2'}
+              </button>
+            )}
+            {isOutOfStock ? (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-stone-900/90 text-white">
+                {t('outOfStock')}
+              </span>
+            ) : isLowStock ? (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-600/95 text-white">
+                Only {p.stock} left
+              </span>
+            ) : null}
+          </div>
         </div>
       </div>
 
@@ -144,6 +180,7 @@ export default function ProductCard({
                 ? t('categoryBag')
                 : t('categoryAccessory')}
             </span>
+            <span className="hidden sm:inline font-mono text-[10px] text-stone-400">{p.sku}</span>
           </div>
 
           <Link
@@ -157,24 +194,25 @@ export default function ProductCard({
             {displayDesc}
           </p>
 
-          {/* Quick Size Selector Pills with Size-Dynamic Pricing */}
+          {/* Quick Size Selector Pills with Bust Measurements (S [36]..XXL [44]) & Size-Dynamic Pricing */}
           {p.sizes && p.sizes.length > 1 && (
             <div className="flex flex-wrap items-center gap-1 mt-1.5 sm:mt-2.5">
               {p.sizes.map((sz) => {
                 const szPrice = getProductPriceForSize(p, sz).price_paise;
+                const label = formatEthnicSizeLabel(sz, p.category);
                 return (
                   <button
                     key={sz}
                     type="button"
                     onClick={() => setSelectedSize(sz)}
-                    title={`${sz}: ${rupees(szPrice)}`}
+                    title={`${label}: ${rupees(szPrice)}`}
                     className={`px-1.5 sm:px-2 py-0.5 rounded text-[9px] sm:text-[10px] font-bold border transition ${
                       selectedSize === sz
                         ? 'bg-stone-900 text-white border-stone-900'
                         : 'bg-stone-50 text-stone-600 border-stone-200 hover:border-stone-400'
                     }`}
                   >
-                    {sz}
+                    {label}
                   </button>
                 );
               })}
@@ -195,7 +233,7 @@ export default function ProductCard({
               )}
               {p.sizes && p.sizes.length > 1 && (
                 <span className="text-[9px] sm:text-[10px] font-mono font-semibold text-amber-900 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
-                  {selectedSize}
+                  {formatEthnicSizeLabel(selectedSize, p.category)}
                 </span>
               )}
             </div>

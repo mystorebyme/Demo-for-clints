@@ -111,15 +111,20 @@ async function validateCart(req) {
       continue;
     }
     const safeQty = Math.max(1, Math.min(Number(item.qty) || 1, Math.min(10, p.stock)));
-    const lineTotal = p.price_paise * safeQty;
+    const safeSize = sanitizeText(item.size || 'Free Size', 24);
+    const unitPricePaise =
+      p.size_prices_paise && typeof p.size_prices_paise[safeSize] === 'number'
+        ? p.size_prices_paise[safeSize]
+        : p.price_paise;
+    const lineTotal = unitPricePaise * safeQty;
     subtotalPaise += lineTotal;
     validated.push({
       id: p.id,
       name: p.name,
       name_hi: p.name_hi,
-      size: sanitizeText(item.size || 'Free Size', 24),
+      size: safeSize,
       qty: safeQty,
-      price_paise: p.price_paise,
+      price_paise: unitPricePaise,
       line_total_paise: lineTotal,
       stock: p.stock,
     });

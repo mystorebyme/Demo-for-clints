@@ -201,10 +201,13 @@ type State = {
   compareList: number[];
   appliedCoupon: string;
   customerProfile: CustomerProfile;
+  lastAddedAt: number;
+  lastAddedItemName: string;
   hydrate: () => void;
   setLang: (l: Lang) => void;
   toggleLang: () => void;
   addToCart: (item: CartItem) => void;
+  dismissAddPopup: () => void;
   updateQty: (id: number, size: string | undefined, qty: number) => void;
   removeFromCart: (id: number, size?: string) => void;
   clearCart: () => void;
@@ -228,6 +231,8 @@ export const useStore = create<State>((set, get) => ({
   compareList: [],
   appliedCoupon: '',
   customerProfile: DEFAULT_PROFILE,
+  lastAddedAt: 0,
+  lastAddedItemName: '',
 
   hydrate: () => {
     if (get().hydrated) return;
@@ -274,8 +279,14 @@ export const useStore = create<State>((set, get) => ({
             { ...item, size: normalizedSize, qty: Math.min(10, Math.max(1, item.qty)) },
           ];
       saveCart(nextCart);
-      return { cart: nextCart };
+      return {
+        cart: nextCart,
+        lastAddedAt: Date.now(),
+        lastAddedItemName: state.lang === 'hi' && item.name_hi ? item.name_hi : item.name,
+      };
     }),
+
+  dismissAddPopup: () => set({ lastAddedAt: 0 }),
 
   updateQty: (id, size, qty) =>
     set((state) => {

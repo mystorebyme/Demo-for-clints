@@ -173,6 +173,7 @@ export default function ProductDetailPage() {
   const [qty, setQty] = useState<number>(1);
   const [addedFeedback, setAddedFeedback] = useState(false);
   const [showSizeModal, setShowSizeModal] = useState(false);
+  const [hideStickyBar, setHideStickyBar] = useState(false);
 
   // Pincode delivery checker (Store Owner Serviceability Engine)
   const [pinInput, setPinInput] = useState('302001');
@@ -1433,9 +1434,10 @@ export default function ProductDetailPage() {
               <button
                 type="button"
                 onClick={() => setShowZoomLightbox(false)}
-                className="px-3.5 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 text-white text-xs font-bold"
+                aria-label="Close Zoom Lightbox"
+                className="w-9 h-9 rounded-full bg-white/15 hover:bg-rose-700 text-white text-lg font-bold flex items-center justify-center transition"
               >
-                Close
+                ×
               </button>
             </div>
             <div className="max-h-[75vh] overflow-auto bg-stone-100 flex items-center justify-center">
@@ -1469,8 +1471,14 @@ export default function ProductDetailPage() {
 
       {/* Indian Ethnic Kurti Size Chart Modal */}
       {showSizeModal && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-xl border border-stone-200">
+        <div
+          className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
+          onClick={() => setShowSizeModal(false)}
+        >
+          <div
+            className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-xl border border-stone-200"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-extrabold text-stone-900">
                 Indian Kurti Size Guide (Inches)
@@ -1478,9 +1486,10 @@ export default function ProductDetailPage() {
               <button
                 type="button"
                 onClick={() => setShowSizeModal(false)}
-                className="px-3 py-1 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-bold"
+                aria-label="Close Size Guide"
+                className="w-8 h-8 rounded-full bg-stone-900 hover:bg-rose-900 text-white text-base font-bold flex items-center justify-center"
               >
-                Close
+                ×
               </button>
             </div>
             <table className="w-full text-xs sm:text-sm text-left border border-stone-200 rounded-xl overflow-hidden">
@@ -1553,67 +1562,79 @@ export default function ProductDetailPage() {
       )}
 
       {/* Sticky Bottom Quick-Purchase Bar (Inspired by Liksha Clothing Product Page) */}
-      <div className="sticky bottom-14 md:bottom-0 z-30 bg-white/95 backdrop-blur-md border-t border-stone-200 shadow-lg px-4 py-2.5">
-        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <img
-              src={product.image_url}
-              alt={displayName}
-              className="w-11 h-12 rounded-xl object-cover border border-stone-200 shrink-0"
-            />
-            <div className="min-w-0">
-              <p className="text-xs sm:text-sm font-serif font-bold text-stone-900 truncate max-w-[200px] sm:max-w-md">
-                {displayName}
-              </p>
-              <div className="flex items-baseline gap-2">
-                <span className="text-xs sm:text-sm font-extrabold text-rose-900">
-                  {rupees(activePricePaise)}
-                </span>
-                {activeOriginalPaise && activeOriginalPaise > activePricePaise && (
-                  <span className="text-[11px] text-stone-400 line-through">
-                    {rupees(activeOriginalPaise)}
+      {!hideStickyBar && (
+        <div className="sticky bottom-14 md:bottom-0 z-30 bg-white/95 backdrop-blur-md border-t border-stone-200 shadow-lg px-4 py-2.5">
+          <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <img
+                src={product.image_url}
+                alt={displayName}
+                className="w-11 h-12 rounded-xl object-cover border border-stone-200 shrink-0"
+              />
+              <div className="min-w-0">
+                <p className="text-xs sm:text-sm font-serif font-bold text-stone-900 truncate max-w-[180px] sm:max-w-md">
+                  {displayName}
+                </p>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-xs sm:text-sm font-extrabold text-rose-900">
+                    {rupees(activePricePaise)}
                   </span>
-                )}
-                <span className="text-[10px] font-mono text-stone-600">
-                  {formatEthnicSizeLabel(selectedSize, product.category)}
-                </span>
+                  {activeOriginalPaise && activeOriginalPaise > activePricePaise && (
+                    <span className="text-[11px] text-stone-400 line-through">
+                      {rupees(activeOriginalPaise)}
+                    </span>
+                  )}
+                  <span className="text-[10px] font-mono text-stone-600">
+                    {formatEthnicSizeLabel(selectedSize, product.category)}
+                  </span>
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="flex items-center gap-2">
-            <select
-              value={selectedSize}
-              onChange={(e) => setSelectedSize(e.target.value)}
-              aria-label="Select size"
-              className="hidden sm:block px-3 py-2 rounded-xl border border-stone-300 bg-white text-xs font-bold text-stone-800"
-            >
-              {product.sizes.map((sz) => (
-                <option key={`sticky-${sz}`} value={sz}>
-                  {formatEthnicSizeLabel(sz, product.category)} — {rupees(getProductPriceForSize(product, sz).price_paise)}
-                </option>
-              ))}
-            </select>
+            <div className="flex items-center gap-2">
+              <select
+                value={selectedSize}
+                onChange={(e) => setSelectedSize(e.target.value)}
+                aria-label="Select size"
+                className="hidden sm:block px-3 py-2 rounded-xl border border-stone-300 bg-white text-xs font-bold text-stone-800"
+              >
+                {product.sizes.map((sz) => (
+                  <option key={`sticky-${sz}`} value={sz}>
+                    {formatEthnicSizeLabel(sz, product.category)} —{' '}
+                    {rupees(getProductPriceForSize(product, sz).price_paise)}
+                  </option>
+                ))}
+              </select>
 
-            <button
-              type="button"
-              disabled={isOutOfStock}
-              onClick={handleAddToCart}
-              className="px-4 py-2 rounded-xl border border-rose-900 text-rose-900 hover:bg-rose-50 text-xs font-extrabold uppercase tracking-wider disabled:opacity-40"
-            >
-              {addedFeedback ? t('addedToCart') : t('addToCart')}
-            </button>
-            <button
-              type="button"
-              disabled={isOutOfStock}
-              onClick={handleBuyNow}
-              className="px-4 py-2 rounded-xl bg-rose-900 hover:bg-rose-950 text-white text-xs font-extrabold uppercase tracking-wider disabled:opacity-40"
-            >
-              Buy It Now
-            </button>
+              <button
+                type="button"
+                disabled={isOutOfStock}
+                onClick={handleAddToCart}
+                className="px-3.5 py-2 rounded-xl border border-rose-900 text-rose-900 hover:bg-rose-50 text-xs font-extrabold uppercase tracking-wider disabled:opacity-40"
+              >
+                {addedFeedback ? t('addedToCart') : t('addToCart')}
+              </button>
+              <button
+                type="button"
+                disabled={isOutOfStock}
+                onClick={handleBuyNow}
+                className="px-3.5 py-2 rounded-xl bg-rose-900 hover:bg-rose-950 text-white text-xs font-extrabold uppercase tracking-wider disabled:opacity-40"
+              >
+                Buy It Now
+              </button>
+              <button
+                type="button"
+                onClick={() => setHideStickyBar(true)}
+                aria-label="Close Sticky Purchase Bar"
+                title="Close"
+                className="w-8 h-8 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-700 hover:text-stone-950 flex items-center justify-center text-base font-bold transition"
+              >
+                ×
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       <Footer />
     </div>

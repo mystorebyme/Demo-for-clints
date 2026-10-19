@@ -639,8 +639,12 @@ function getStore(): GlobalStore {
       updated_at: new Date().toISOString(),
     });
 
-    // Load persisted accounts from disk if available (skip during unit test runs so tests start clean)
-    const isTestRun = process.execArgv.includes('--test') || process.env.NODE_ENV === 'test';
+    // Load persisted accounts & orders from disk if available (skip during unit test runs so tests start clean)
+    const isTestRun =
+      Boolean(process.env.NODE_TEST_CONTEXT) ||
+      process.argv.some((a) => a.includes('test')) ||
+      process.execArgv.includes('--test') ||
+      process.env.NODE_ENV === 'test';
     if (!isTestRun) {
       try {
         const dbPath = path.resolve(process.cwd(), '../database/runtime_accounts.json');
@@ -650,6 +654,17 @@ function getStore(): GlobalStore {
             for (const acct of raw) {
               if (acct && typeof acct.email === 'string') {
                 initialAccounts.set(acct.email.toLowerCase(), acct);
+              }
+            }
+          }
+        }
+        const ordersPath = path.resolve(process.cwd(), '../database/runtime_orders.json');
+        if (fs.existsSync(ordersPath)) {
+          const rawOrders = JSON.parse(fs.readFileSync(ordersPath, 'utf8'));
+          if (Array.isArray(rawOrders)) {
+            for (const ord of rawOrders) {
+              if (ord && typeof ord.order_id === 'string') {
+                initialOrders.set(ord.order_id, ord);
               }
             }
           }
@@ -1410,6 +1425,8 @@ export function createServerOrder(params: {
     });
   }
 
+  persistAccountsToDisk();
+
   return {
     success: true,
     orderId,
@@ -1589,6 +1606,7 @@ export function confirmServerOrder(
   // Automatically dispatch HTML Email Receipt + Tracking ID to customer's email AND Store Owner
   dispatchOrderConfirmationEmail(record);
   notifyStoreOwnerOfOrder(record.order_id, 'Automatic Store Owner Dispatch on Payment Confirmation');
+  persistAccountsToDisk();
 
   return {
     result: 'confirmed',
@@ -1654,6 +1672,7 @@ export function updateServerOrderTracking(
 
   record.tracking_history = [...(record.tracking_history || []), event];
   record.updated_at = nowIso;
+  persistAccountsToDisk();
   return record;
 }
 
@@ -2176,7 +2195,14 @@ export function verifyRegistrationOtpAndCreate(rawEmail: string, rawOtp: string)
 }
 
 function persistAccountsToDisk() {
-  if (process.execArgv.includes('--test') || process.env.NODE_ENV === 'test') return;
+  if (
+    Boolean(process.env.NODE_TEST_CONTEXT) ||
+    process.argv.some((a) => a.includes('test')) ||
+    process.execArgv.includes('--test') ||
+    process.env.NODE_ENV === 'test'
+  ) {
+    return;
+  }
   try {
     const store = getStore();
     const dbDir = path.resolve(process.cwd(), '../database');
@@ -2184,6 +2210,10 @@ function persistAccountsToDisk() {
       const dbPath = path.join(dbDir, 'runtime_accounts.json');
       const arr = Array.from(store.accounts.values());
       fs.writeFileSync(dbPath, JSON.stringify(arr, null, 2), 'utf8');
+
+      const ordersPath = path.join(dbDir, 'runtime_orders.json');
+      const ordersArr = Array.from(store.orders.values());
+      fs.writeFileSync(ordersPath, JSON.stringify(ordersArr, null, 2), 'utf8');
     }
   } catch {
     // ignore disk write errors in read-only or test environments
@@ -2827,6 +2857,7 @@ export function getAdminAnalyticsSummary() {
   const store = getStore();
   const orders = Array.from(store.orders.values());
   const confirmedOrders = orders.filter((o) => o.status === 'CONFIRMED' || o.status === 'PAID');
+  const pendingOrders = orders.filter((o) => o.status === 'PENDING' || o.status === 'CREATED');
 
   const liveConfirmedRevenuePaise = confirmedOrders.reduce((acc, o) => acc + o.amount_paise, 0);
   const totalDiscountGivenPaise = confirmedOrders.reduce((acc, o) => acc + (o.discount_paise || 0), 0);
@@ -2836,10 +2867,16 @@ export function getAdminAnalyticsSummary() {
     bag: 0,
     accessory: 0,
   };
+  const unitsSoldByCategory: Record<'kurti' | 'bag' | 'accessory', number> = {
+    kurti: 0,
+    bag: 0,
+    accessory: 0,
+  };
   let totalUnitsSold = 0;
   for (const p of store.products) {
     const rev = p.sold_count * p.price_paise;
     catalogRevenueByCategory[p.category] = (catalogRevenueByCategory[p.category] || 0) + rev;
+    unitsSoldByCategory[p.category] = (unitsSoldByCategory[p.category] || 0) + p.sold_count;
     totalUnitsSold += p.sold_count;
   }
 
@@ -2847,6 +2884,8 @@ export function getAdminAnalyticsSummary() {
     catalogRevenueByCategory.kurti +
     catalogRevenueByCategory.bag +
     catalogRevenueByCategory.accessory;
+
+  const totalGstPaise = Math.round((totalCatalogRevenuePaise * 5) / 105);
 
   const topProducts = [...store.products]
     .sort((a, b) => b.sold_count * b.price_paise - a.sold_count * a.price_paise)
@@ -2866,43 +2905,50 @@ export function getAdminAnalyticsSummary() {
   const lowStockProducts = store.products.filter((p) => p.stock <= 5);
 
   const dailySeries = [
-    { day: '13 Oct', orders: 18, revenuePaise: 2480000 },
-    { day: '14 Oct', orders: 24, revenuePaise: 3290000 },
-    { day: '15 Oct', orders: 21, revenuePaise: 2850000 },
-    { day: '16 Oct', orders: 31, revenuePaise: 4420000 },
-    { day: '17 Oct', orders: 29, revenuePaise: 3980000 },
-    { day: '18 Oct', orders: 36, revenuePaise: 5190000 },
+    { day: '13 Oct', label: '13 Oct', orders: 18, ordersCount: 18, revenuePaise: 2480000 },
+    { day: '14 Oct', label: '14 Oct', orders: 24, ordersCount: 24, revenuePaise: 3290000 },
+    { day: '15 Oct', label: '15 Oct', orders: 21, ordersCount: 21, revenuePaise: 2850000 },
+    { day: '16 Oct', label: '16 Oct', orders: 31, ordersCount: 31, revenuePaise: 4420000 },
+    { day: '17 Oct', label: '17 Oct', orders: 29, ordersCount: 29, revenuePaise: 3980000 },
+    { day: '18 Oct', label: '18 Oct', orders: 36, ordersCount: 36, revenuePaise: 5190000 },
     {
       day: 'Today (19 Oct)',
+      label: 'Today (19 Oct)',
       orders: 26 + confirmedOrders.length,
+      ordersCount: 26 + confirmedOrders.length,
       revenuePaise: 3650000 + liveConfirmedRevenuePaise,
     },
   ];
 
   return {
     totalRevenuePaise: totalCatalogRevenuePaise,
+    totalGstPaise,
     liveSessionRevenuePaise: liveConfirmedRevenuePaise,
     totalDiscountGivenPaise,
     totalOrdersCount: 185 + orders.length,
     confirmedOrdersCount: confirmedOrders.length,
+    pendingOrdersCount: pendingOrders.length,
     totalUnitsSold,
     averageOrderValuePaise: Math.round(totalCatalogRevenuePaise / Math.max(1, 185 + confirmedOrders.length)),
     categoryBreakdown: [
       {
         category: 'kurti',
         label: 'Kurtas & Sets / कुर्तियाँ',
+        unitsSold: unitsSoldByCategory.kurti,
         revenuePaise: catalogRevenueByCategory.kurti,
         percentage: Math.round((catalogRevenueByCategory.kurti / Math.max(1, totalCatalogRevenuePaise)) * 100),
       },
       {
         category: 'bag',
         label: 'Heritage Bags / बैग्स',
+        unitsSold: unitsSoldByCategory.bag,
         revenuePaise: catalogRevenueByCategory.bag,
         percentage: Math.round((catalogRevenueByCategory.bag / Math.max(1, totalCatalogRevenuePaise)) * 100),
       },
       {
         category: 'accessory',
         label: 'Fine Jewellery / ज्वेलरी',
+        unitsSold: unitsSoldByCategory.accessory,
         revenuePaise: catalogRevenueByCategory.accessory,
         percentage: Math.round((catalogRevenueByCategory.accessory / Math.max(1, totalCatalogRevenuePaise)) * 100),
       },

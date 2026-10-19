@@ -403,9 +403,20 @@ export default function ProductCard({
           onClick={() => setShowQuickView(false)}
         >
           <div
-            className="bg-white rounded-3xl max-w-4xl w-full overflow-hidden shadow-2xl border border-stone-200 grid grid-cols-1 md:grid-cols-12"
+            className="relative bg-white rounded-3xl max-w-4xl w-full overflow-hidden shadow-2xl border border-stone-200 grid grid-cols-1 md:grid-cols-12"
             onClick={(e) => e.stopPropagation()}
           >
+            {/* Always-Visible Floating Top-Right Cross (×) Button */}
+            <button
+              type="button"
+              onClick={() => setShowQuickView(false)}
+              aria-label="Close Quick View"
+              title="Close"
+              className="absolute top-3 right-3 z-20 w-9 h-9 rounded-full bg-stone-950 text-white hover:bg-rose-900 flex items-center justify-center text-lg font-bold shadow-lg transition"
+            >
+              ×
+            </button>
+
             {/* Left Gallery */}
             <div className="md:col-span-5 bg-stone-100 p-4 flex flex-col justify-between">
               <div className="relative aspect-[4/5] rounded-2xl overflow-hidden bg-white border border-stone-200">
@@ -443,7 +454,7 @@ export default function ProductCard({
             {/* Right Quick Shop Details */}
             <div className="md:col-span-7 p-5 sm:p-7 flex flex-col justify-between space-y-4">
               <div>
-                <div className="flex items-center justify-between gap-2 mb-2">
+                <div className="flex items-center justify-between gap-2 mb-2 pr-10">
                   <span className="text-[10px] font-mono uppercase tracking-widest text-rose-900 font-bold">
                     SKU: {p.sku} | {shade.label}
                   </span>
@@ -452,7 +463,7 @@ export default function ProductCard({
                     onClick={() => setShowQuickView(false)}
                     className="px-3 py-1 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-bold"
                   >
-                    Close
+                    × Close
                   </button>
                 </div>
 

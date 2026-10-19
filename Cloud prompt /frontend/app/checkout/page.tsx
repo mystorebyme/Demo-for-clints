@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Header from '../../components/Header';
 import Footer from '../../components/Footer';
-import { rupees, useStore, validateCheckoutForm } from '../../lib/store';
+import { rupees, saveOrderAccessToken, useStore, validateCheckoutForm } from '../../lib/store';
 
 export default function CheckoutPage() {
   const router = useRouter();
@@ -71,6 +71,8 @@ export default function CheckoutPage() {
       body: JSON.stringify({
         items: cart.map((i) => ({ id: i.id, qty: i.qty, size: i.size || 'Free Size' })),
         couponCode: appliedCoupon || null,
+        email: email.trim() || customerProfile.email || null,
+        phone: phone.replace(/\D/g, '') || customerProfile.phone || null,
       }),
     })
       .then((r) => r.json())
@@ -88,7 +90,7 @@ export default function CheckoutPage() {
         }
       })
       .catch(() => {});
-  }, [cart, appliedCoupon]);
+  }, [cart, appliedCoupon, email, phone, customerProfile.email, customerProfile.phone]);
 
   const handleApplyCoupon = (code?: string) => {
     const clean = (code ?? couponInput).trim().toUpperCase();
@@ -154,6 +156,10 @@ export default function CheckoutPage() {
         setServerError(data.error || 'Could not create order. Please check your details.');
         setLoading(false);
         return;
+      }
+
+      if (data.orderAccessToken) {
+        saveOrderAccessToken(data.orderId, data.orderAccessToken);
       }
 
       router.push(`/order/${data.orderId}`);
@@ -351,9 +357,9 @@ export default function CheckoutPage() {
                 ))}
               </div>
 
-              {/* Quick Promo Code Selector on Checkout */}
-              <div className="p-3.5 rounded-2xl bg-stone-50 border border-stone-200">
-                <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-500 mb-1.5">
+              {/* Private Promo Code Input on Checkout (Zero Public Coupon Chips) */}
+              <div className="p-3.5 rounded-2xl bg-stone-50 border border-stone-200 space-y-2">
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-500">
                   {t('couponCode')}
                 </label>
                 <div className="flex gap-1.5">
@@ -361,7 +367,7 @@ export default function CheckoutPage() {
                     type="text"
                     value={couponInput}
                     onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
-                    placeholder="DIWALI20 / FIRST10"
+                    placeholder={lang === 'hi' ? 'प्रोमो कोड दर्ज करें' : 'Enter promo code'}
                     className="flex-1 px-2.5 py-2 rounded-lg border border-stone-300 text-xs font-mono font-bold uppercase bg-white"
                   />
                   {appliedCoupon ? (
@@ -370,7 +376,7 @@ export default function CheckoutPage() {
                       onClick={() => handleApplyCoupon('')}
                       className="px-2.5 py-2 rounded-lg bg-stone-200 text-stone-800 text-xs font-bold"
                     >
-                      
+                      Remove
                     </button>
                   ) : (
                     <button
@@ -382,22 +388,20 @@ export default function CheckoutPage() {
                     </button>
                   )}
                 </div>
-                <div className="flex flex-wrap gap-1.5 mt-2">
-                  {['FIRST10', 'DIWALI20', 'JAIPUR15', 'ROYAL250'].map((code) => (
-                    <button
-                      key={code}
-                      type="button"
-                      onClick={() => handleApplyCoupon(code)}
-                      className={`px-2 py-0.5 rounded text-[11px] font-mono font-bold border transition ${
-                        appliedCoupon === code
-                          ? 'bg-emerald-800 text-white border-emerald-800'
-                          : 'bg-white text-rose-900 border-rose-200 hover:bg-rose-50'
-                      }`}
-                    >
-                      {code}
-                    </button>
-                  ))}
-                </div>
+                {serverQuote?.couponMessage && (
+                  <p
+                    className={`text-[11px] font-semibold ${
+                      serverQuote.couponCode ? 'text-emerald-700' : 'text-amber-800'
+                    }`}
+                  >
+                    {serverQuote.couponMessage}
+                  </p>
+                )}
+                <p className="text-[10px] text-stone-500 leading-relaxed">
+                  {lang === 'hi'
+                    ? 'T&C: एक प्रोमो कोड एक ग्राहक अकाउंट पर केवल 1 बार मान्य है। फर्स्ट-ऑर्डर कोड केवल पहले ऑर्डर पर लागू होते हैं।'
+                    : 'T&C: Valid for 1 single use per customer account. First-order codes apply strictly on the first order only.'}
+                </p>
               </div>
 
               <div className="border-t border-stone-200 pt-3 space-y-2 text-sm">

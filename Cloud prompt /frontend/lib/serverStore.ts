@@ -66,6 +66,10 @@ export type CouponRecord = {
   discount_value: number;
   min_order_paise: number;
   max_discount_paise: number;
+  first_order_only?: boolean;
+  single_use_per_account?: boolean;
+  terms_en?: string;
+  terms_hi?: string;
   active: boolean;
   usage_count: number;
 };
@@ -143,6 +147,7 @@ export type CustomerAccountRecord = {
   cityState: string;
   address: string;
   wishlist: number[];
+  password_hash?: string;
   email_verified?: boolean;
   verified_at?: string | null;
   updated_at: string;
@@ -310,6 +315,10 @@ const INITIAL_COUPONS: CouponRecord[] = [
     discount_value: 10,
     min_order_paise: 0,
     max_discount_paise: 50000,
+    first_order_only: true,
+    single_use_per_account: true,
+    terms_en: 'Valid strictly on your first order only. Limit 1 redemption per customer account/email/phone.',
+    terms_hi: 'केवल पहले ऑर्डर पर मान्य। प्रति ग्राहक अकाउंट/ईमेल/फ़ोन केवल 1 बार उपयोग।',
     active: true,
     usage_count: 14,
   },
@@ -321,6 +330,10 @@ const INITIAL_COUPONS: CouponRecord[] = [
     discount_value: 20,
     min_order_paise: 129900,
     max_discount_paise: 100000,
+    first_order_only: false,
+    single_use_per_account: true,
+    terms_en: 'Valid once per customer account on minimum cart value of ₹1,299.',
+    terms_hi: '₹1,299 के न्यूनतम ऑर्डर पर प्रति ग्राहक केवल 1 बार मान्य।',
     active: true,
     usage_count: 29,
   },
@@ -332,6 +345,10 @@ const INITIAL_COUPONS: CouponRecord[] = [
     discount_value: 15,
     min_order_paise: 99900,
     max_discount_paise: 75000,
+    first_order_only: false,
+    single_use_per_account: true,
+    terms_en: 'Valid once per customer account on minimum cart value of ₹999.',
+    terms_hi: '₹999 के न्यूनतम ऑर्डर पर प्रति ग्राहक केवल 1 बार मान्य।',
     active: true,
     usage_count: 9,
   },
@@ -343,6 +360,10 @@ const INITIAL_COUPONS: CouponRecord[] = [
     discount_value: 25000,
     min_order_paise: 179900,
     max_discount_paise: 25000,
+    first_order_only: false,
+    single_use_per_account: true,
+    terms_en: 'Valid once per customer account on minimum cart value of ₹1,799.',
+    terms_hi: '₹1,799 के न्यूनतम ऑर्डर पर प्रति ग्राहक केवल 1 बार मान्य।',
     active: true,
     usage_count: 6,
   },
@@ -486,6 +507,7 @@ function getStore(): GlobalStore {
       cityState: 'Jaipur, Rajasthan',
       address: 'Flat 102, Rose Residency, MI Road',
       wishlist: [1, 2, 7, 13],
+      password_hash: hashAccountPassword('Priya@2026', 'priya.sharma@gmail.com'),
       email_verified: true,
       verified_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -784,7 +806,8 @@ export function listServerCoupons(): CouponRecord[] {
 
 export function validateCouponServerSide(
   rawCode: string | undefined | null,
-  subtotalPaise: number
+  subtotalPaise: number,
+  customerContext?: { email?: string | null; phone?: string | null }
 ): {
   valid: boolean;
   code: string | null;
@@ -795,8 +818,9 @@ export function validateCouponServerSide(
   if (!rawCode || !rawCode.trim()) {
     return { valid: false, code: null, discountPaise: 0 };
   }
+  const store = getStore();
   const code = sanitizeText(rawCode, 30).toUpperCase();
-  const coupon = getStore().coupons.get(code);
+  const coupon = store.coupons.get(code);
   if (!coupon || !coupon.active) {
     return {
       valid: false,
@@ -814,6 +838,42 @@ export function validateCouponServerSide(
       message: `Coupon ${code} requires a minimum order of ₹${minInr.toLocaleString('en-IN')}`,
     };
   }
+
+  // Enforce per-account single-use & first-order-only T&C when customer email or phone is known
+  const cleanEmail = sanitizeText(customerContext?.email || '', 120).toLowerCase();
+  const cleanPhone = (customerContext?.phone || '').replace(/\D/g, '').slice(-10);
+
+  if (cleanEmail || cleanPhone.length === 10) {
+    const priorOrders = Array.from(store.orders.values()).filter((o) => {
+      if (o.status === 'FAILED' || o.status === 'EXPIRED') return false;
+      const emailMatch = cleanEmail && (o.customer_email || '').toLowerCase() === cleanEmail;
+      const phoneMatch =
+        cleanPhone.length === 10 && (o.phone || '').replace(/\D/g, '').slice(-10) === cleanPhone;
+      return Boolean(emailMatch || phoneMatch);
+    });
+
+    if ((coupon.first_order_only || code === 'FIRST10') && priorOrders.length > 0) {
+      return {
+        valid: false,
+        code: null,
+        discountPaise: 0,
+        message: `Promo code ${code} is valid strictly on your very first order only.`,
+      };
+    }
+
+    if (
+      coupon.single_use_per_account !== false &&
+      priorOrders.some((o) => (o.coupon_code || '').toUpperCase() === code)
+    ) {
+      return {
+        valid: false,
+        code: null,
+        discountPaise: 0,
+        message: `Promo code ${code} has already been redeemed on your account (limit: 1 use per customer).`,
+      };
+    }
+  }
+
   let discountPaise = 0;
   if (coupon.discount_type === 'PERCENT') {
     discountPaise = Math.round((subtotalPaise * coupon.discount_value) / 100);
@@ -905,7 +965,8 @@ export function addProductReview(
  */
 export function validateCartServerSide(
   rawItems: Array<{ id: number; qty: number; size?: string }>,
-  couponCode?: string | null
+  couponCode?: string | null,
+  customerContext?: { email?: string | null; phone?: string | null }
 ): {
   success: boolean;
   error?: string;
@@ -961,7 +1022,7 @@ export function validateCartServerSide(
     });
   }
 
-  const couponResult = validateCouponServerSide(couponCode, subtotalPaise);
+  const couponResult = validateCouponServerSide(couponCode, subtotalPaise, customerContext);
   const discountPaise = couponResult.valid ? couponResult.discountPaise : 0;
   const afterDiscount = Math.max(100, subtotalPaise - discountPaise);
   const shippingPaise =
@@ -992,6 +1053,7 @@ export function createServerOrder(params: {
   | {
       success: true;
       orderId: string;
+      orderAccessToken: string;
       amountPaise: number;
       subtotalPaise: number;
       discountPaise: number;
@@ -1019,6 +1081,7 @@ export function createServerOrder(params: {
         return {
           success: true,
           orderId: existing.order_id,
+          orderAccessToken: signOrderAccessToken(existing.order_id),
           amountPaise: existing.amount_paise,
           subtotalPaise: existing.subtotal_paise,
           discountPaise: existing.discount_paise,
@@ -1031,11 +1094,6 @@ export function createServerOrder(params: {
         };
       }
     }
-  }
-
-  const validated = validateCartServerSide(params.items, params.couponCode);
-  if (!validated.success || !validated.items || validated.totalPaise === undefined) {
-    return { success: false, error: validated.error || 'Invalid cart' };
   }
 
   const name = sanitizeText(params.customer?.name || '', 120);
@@ -1055,6 +1113,23 @@ export function createServerOrder(params: {
   }
   if (address.length < 10) {
     return { success: false, error: 'Complete delivery address is required' };
+  }
+
+  const validated = validateCartServerSide(params.items, params.couponCode, { email, phone });
+  if (!validated.success || !validated.items || validated.totalPaise === undefined) {
+    return { success: false, error: validated.error || 'Invalid cart' };
+  }
+
+  // If the customer explicitly entered a promo code that failed per-account / first-order T&C, reject with clear message
+  if (params.couponCode && params.couponCode.trim() && !validated.couponCode) {
+    const couponCheck = validateCouponServerSide(
+      params.couponCode,
+      validated.subtotalPaise || 0,
+      { email, phone }
+    );
+    if (!couponCheck.valid && couponCheck.message) {
+      return { success: false, error: couponCheck.message };
+    }
   }
 
   const expiresInSeconds = 240;
@@ -1146,6 +1221,9 @@ export function createServerOrder(params: {
       cityState: existingAcct?.cityState || 'Jaipur, Rajasthan',
       address,
       wishlist: existingAcct?.wishlist || [],
+      password_hash: existingAcct?.password_hash,
+      email_verified: existingAcct?.email_verified,
+      verified_at: existingAcct?.verified_at,
       updated_at: nowIso,
     });
   }
@@ -1153,6 +1231,7 @@ export function createServerOrder(params: {
   return {
     success: true,
     orderId,
+    orderAccessToken: signOrderAccessToken(orderId),
     amountPaise: record.amount_paise,
     subtotalPaise: record.subtotal_paise,
     discountPaise: record.discount_paise,
@@ -1513,6 +1592,226 @@ export function validateAuthenticEmail(rawEmail: string): {
   return { valid: true, email };
 }
 
+const SESSION_SIGNING_SECRET =
+  process.env.SESSION_SECRET ||
+  process.env.ADMIN_TOKEN ||
+  'zariya-jaipur-hmac-session-secret-2026-v2';
+
+export function hashAccountPassword(password: string, email: string): string {
+  const cleanEmail = (email || '').trim().toLowerCase();
+  return crypto
+    .createHmac('sha256', SESSION_SIGNING_SECRET)
+    .update(`pwd:${cleanEmail}:${password}`)
+    .digest('hex');
+}
+
+export function signAccountSessionToken(email: string): string {
+  const cleanEmail = (email || '').trim().toLowerCase();
+  const mac = crypto
+    .createHmac('sha256', SESSION_SIGNING_SECRET)
+    .update(`acct-session:${cleanEmail}`)
+    .digest('hex');
+  return `zjsess_${Buffer.from(cleanEmail, 'utf8').toString('base64url')}.${mac}`;
+}
+
+export function verifyAccountSessionToken(
+  token: string | null | undefined,
+  expectedEmail?: string | null
+): { valid: boolean; email: string | null } {
+  if (!token || typeof token !== 'string' || !token.startsWith('zjsess_')) {
+    return { valid: false, email: null };
+  }
+  const body = token.slice('zjsess_'.length);
+  const dotIdx = body.lastIndexOf('.');
+  if (dotIdx <= 0) return { valid: false, email: null };
+  const b64Email = body.slice(0, dotIdx);
+  const providedMac = body.slice(dotIdx + 1);
+  let decodedEmail = '';
+  try {
+    decodedEmail = Buffer.from(b64Email, 'base64url').toString('utf8').toLowerCase();
+  } catch {
+    return { valid: false, email: null };
+  }
+  const expectedMac = crypto
+    .createHmac('sha256', SESSION_SIGNING_SECRET)
+    .update(`acct-session:${decodedEmail}`)
+    .digest('hex');
+
+  const a = Buffer.from(providedMac);
+  const b = Buffer.from(expectedMac);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+    return { valid: false, email: null };
+  }
+  if (expectedEmail && decodedEmail !== expectedEmail.trim().toLowerCase()) {
+    return { valid: false, email: null };
+  }
+  return { valid: true, email: decodedEmail };
+}
+
+export function signOrderAccessToken(orderId: string): string {
+  const cleanId = (orderId || '').trim().toUpperCase();
+  return crypto
+    .createHmac('sha256', SESSION_SIGNING_SECRET)
+    .update(`order-access:${cleanId}`)
+    .digest('hex');
+}
+
+export function verifyOrderAccessToken(
+  token: string | null | undefined,
+  orderId: string
+): boolean {
+  if (!token || typeof token !== 'string') return false;
+  const expected = signOrderAccessToken(orderId);
+  const a = Buffer.from(token);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
+}
+
+export function authenticateOrRegisterAccount(input: {
+  mode: 'login' | 'register';
+  email: string;
+  password: string;
+  name?: string;
+  phone?: string;
+}):
+  | {
+      success: true;
+      sessionToken: string;
+      profile: CustomerAccountRecord;
+      wishlistProducts: LiveProduct[];
+      orders: ReturnType<typeof getCustomerAccount> extends infer T
+        ? T extends { orders: infer O }
+          ? O
+          : never
+        : never;
+    }
+  | {
+      success: false;
+      error: string;
+      error_hi?: string;
+    } {
+  const check = validateAuthenticEmail(input.email);
+  if (!check.valid) {
+    return {
+      success: false,
+      error: check.reason_en || 'Invalid email address',
+      error_hi: check.reason_hi,
+    };
+  }
+  const email = check.email;
+  const password = String(input.password || '');
+  if (password.length < 6) {
+    return {
+      success: false,
+      error: 'Password must be at least 6 characters long.',
+      error_hi: 'पासवर्ड कम से कम 6 अक्षरों का होना चाहिए।',
+    };
+  }
+
+  const store = getStore();
+  const existing = store.accounts.get(email);
+  const matchingOrders = Array.from(store.orders.values()).filter(
+    (o) => (o.customer_email || '').toLowerCase() === email
+  );
+
+  if (input.mode === 'login') {
+    if (!existing || !existing.password_hash) {
+      return {
+        success: false,
+        error:
+          'No registered password found for this email. Please use Create Account and verify your registered mobile number.',
+        error_hi:
+          'इस ईमेल के लिए कोई पासवर्ड पंजीकृत नहीं है। कृपया नया अकाउंट बनाएं और अपना पंजीकृत मोबाइल नंबर सत्यापित करें।',
+      };
+    }
+    const candidateHash = hashAccountPassword(password, email);
+    const a = Buffer.from(candidateHash);
+    const b = Buffer.from(existing.password_hash);
+    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+      return {
+        success: false,
+        error: 'Incorrect email or password. Access denied.',
+        error_hi: 'ईमेल या पासवर्ड गलत है। किसी अन्य का अकाउंट नहीं खोला जा सकता।',
+      };
+    }
+    const acctData = getCustomerAccount(email)!;
+    return {
+      success: true,
+      sessionToken: signAccountSessionToken(email),
+      ...acctData,
+    };
+  }
+
+  // mode === 'register'
+  if (existing && existing.password_hash) {
+    return {
+      success: false,
+      error:
+        'An account with this email is already registered and password-protected. Please sign in with your password.',
+      error_hi:
+        'यह ईमेल पहले से पासवर्ड द्वारा सुरक्षित है। कृपया अपने पासवर्ड से साइन इन करें।',
+    };
+  }
+
+  const cleanPhone = String(input.phone || '').replace(/\D/g, '').slice(-10);
+  if (!/^[6-9]\d{9}$/.test(cleanPhone)) {
+    return {
+      success: false,
+      error: 'Please enter a valid 10-digit Indian mobile number.',
+      error_hi: 'कृपया सही 10-अंकों का मोबाइल नंबर दर्ज करें।',
+    };
+  }
+
+  // Anti-hijack check: if orders already exist for this email (e.g. placed at guest checkout),
+  // require the registrant to prove ownership by supplying the exact 10-digit phone number from the order!
+  if (matchingOrders.length > 0) {
+    const orderPhoneMatch = matchingOrders.some(
+      (o) => (o.phone || '').replace(/\D/g, '').slice(-10) === cleanPhone
+    );
+    if (!orderPhoneMatch) {
+      return {
+        success: false,
+        error:
+          'This email has existing order records. To protect customer privacy, you must enter the exact 10-digit mobile number used when placing the order.',
+        error_hi:
+          'ग्राहक की गोपनीयता की सुरक्षा के लिए, इस ईमेल से जुड़े ऑर्डर का वही 10-अंकों का मोबाइल नंबर दर्ज करना अनिवार्य है।',
+      };
+    }
+  }
+
+  const nowIso = new Date().toISOString();
+  const cleanName = sanitizeText(input.name || existing?.name || matchingOrders[0]?.customer_name || '', 120);
+  if (cleanName.length < 2) {
+    return {
+      success: false,
+      error: 'Please enter your full name (at least 2 characters).',
+      error_hi: 'कृपया अपना पूरा नाम दर्ज करें।',
+    };
+  }
+
+  store.accounts.set(email, {
+    email,
+    name: cleanName,
+    phone: cleanPhone,
+    pincode: existing?.pincode || '302001',
+    cityState: existing?.cityState || 'Jaipur, Rajasthan',
+    address: existing?.address || matchingOrders[0]?.address || '',
+    wishlist: existing?.wishlist || [],
+    password_hash: hashAccountPassword(password, email),
+    email_verified: true,
+    verified_at: nowIso,
+    updated_at: nowIso,
+  });
+
+  const acctData = getCustomerAccount(email)!;
+  return {
+    success: true,
+    sessionToken: signAccountSessionToken(email),
+    ...acctData,
+  };
+}
+
 export function requestEmailVerificationOtp(rawEmail: string): {
   success: boolean;
   email?: string;
@@ -1666,8 +1965,11 @@ export function getCustomerAccount(rawEmail: string) {
 
   const wishlistProducts = store.products.filter((p) => profile!.wishlist.includes(p.id));
 
+  const safeProfile = { ...profile };
+  delete (safeProfile as Partial<CustomerAccountRecord>).password_hash;
+
   return {
-    profile,
+    profile: safeProfile,
     wishlistProducts,
     orders: matchingOrders.map((o) => ({
       order_id: o.order_id,
@@ -1739,6 +2041,9 @@ export function upsertCustomerAccount(input: {
         ? sanitizeText(input.address, 400)
         : existing?.address || '',
     wishlist,
+    password_hash: existing?.password_hash,
+    email_verified: existing?.email_verified,
+    verified_at: existing?.verified_at,
     updated_at: nowIso,
   };
 

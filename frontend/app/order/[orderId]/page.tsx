@@ -4,7 +4,7 @@ import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import Header from '../../../components/Header';
 import Footer from '../../../components/Footer';
-import { rupees, useStore } from '../../../lib/store';
+import { getOrderAccessToken, rupees, useStore } from '../../../lib/store';
 
 function createQrMatrix(payload: string, size = 29): boolean[][] {
   const grid: boolean[][] = Array.from({ length: size }, () => Array(size).fill(false));
@@ -59,7 +59,7 @@ function DynamicQrSvg({ value }: { value: string }) {
   return (
     <svg
       viewBox={`0 0 ${size + 4} ${size + 4}`}
-      className="w-52 h-52 sm:w-56 sm:h-56 mx-auto rounded-xl bg-white shadow-sm"
+      className="w-52 h-52 sm:w-56 sm:h-56 mx-auto rounded-xl bg-white shadow-xs"
       role="img"
       aria-label="UPI QR Code"
     >
@@ -75,14 +75,8 @@ function DynamicQrSvg({ value }: { value: string }) {
   );
 }
 
-type ReferenceSegment = {
-  segment: string;
-  digits: string;
-  meaning_en: string;
-  meaning_hi: string;
-};
-
 type OrderDetail = {
+  authorizedOwner?: boolean;
   orderId: string;
   invoiceNumber?: string;
   subtotalPaise?: number;
@@ -97,7 +91,7 @@ type OrderDetail = {
   supplyType?: 'INTRA_STATE' | 'INTER_STATE';
   amountPaise: number;
   status: string;
-  qrPayload: string;
+  qrPayload?: string;
   qrExpiresAt?: string;
   paymentId?: string | null;
   trackingId?: string | null;
@@ -117,20 +111,6 @@ type OrderDetail = {
   customerEmail?: string;
   phone?: string;
   address?: string;
-  referenceExplanation?: {
-    orderFormat: { code: string; standard: string; pattern: string; segments: ReferenceSegment[] };
-    invoiceFormat: { code: string; standard: string; pattern: string; segments: ReferenceSegment[] };
-    trackingFormat: { code: string; standard: string; pattern: string; segments: ReferenceSegment[] };
-  };
-  emailReceipt?: {
-    id: string;
-    to_email: string;
-    subject: string;
-    tracking_id: string;
-    invoice_number: string;
-    html_preview: string;
-    sent_at: string;
-  } | null;
   items?: {
     id: number;
     name: string;
@@ -151,21 +131,28 @@ const TRACKING_STEPS = [
 
 export default function OrderPage({ params }: { params: { orderId: string } }) {
   const { orderId } = params;
-  const { clearCart, lang, t } = useStore();
+  const { clearCart, customerProfile, lang, t } = useStore();
 
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [secondsLeft, setSecondsLeft] = useState<number>(240);
   const [message, setMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [copiedTracking, setCopiedTracking] = useState(false);
-  const [showEmailModal, setShowEmailModal] = useState(false);
-  const [resendingEmail, setResendingEmail] = useState(false);
 
   const isConfirmed = order?.status === 'CONFIRMED' || order?.status === 'PAID';
+  const isOwner = Boolean(order?.authorizedOwner);
 
   const fetchOrder = useCallback(async () => {
     try {
-      const res = await fetch(`/api/orders/${orderId}`, { cache: 'no-store' });
+      const orderToken = getOrderAccessToken(orderId);
+      const accountToken = customerProfile.sessionToken || '';
+      const res = await fetch(`/api/orders/${orderId}`, {
+        cache: 'no-store',
+        headers: {
+          ...(orderToken ? { 'x-order-token': orderToken } : {}),
+          ...(accountToken ? { 'x-account-token': accountToken } : {}),
+        },
+      });
       const data = await res.json();
       if (data && data.orderId) {
         setOrder(data);
@@ -176,7 +163,11 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
     } catch {
       // ignore transient poll failures
     }
-  }, [orderId, clearCart]);
+  }, [orderId, clearCart, customerProfile.sessionToken]);
+
+  useEffect(() => {
+    useStore.getState().hydrate();
+  }, []);
 
   useEffect(() => {
     fetchOrder();
@@ -198,8 +189,9 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
   }, [order?.qrExpiresAt, isConfirmed]);
 
   async function verifyInstantUpi() {
+    if (!isOwner) return;
     setSubmitting(true);
-    setMessage('Verifying UPI payment & emailing your GST Tax Invoice + Tracking ID...');
+    setMessage('Verifying UPI payment...');
     try {
       await fetch('/api/dev/mock-pay', {
         method: 'POST',
@@ -207,31 +199,11 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
         body: JSON.stringify({ orderId }),
       });
       await fetchOrder();
-      setMessage('Payment verified! Your GST Invoice & Tracking ID have been emailed.');
+      setMessage('Payment verified! Your GST Tax Invoice & Tracking ID have been emailed.');
     } catch {
       setMessage('Please try again.');
     } finally {
       setSubmitting(false);
-    }
-  }
-
-  async function handleResendEmail() {
-    setResendingEmail(true);
-    try {
-      const res = await fetch(`/api/orders/${orderId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: order?.customerEmail }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        await fetchOrder();
-        setMessage(`Receipt & Tracking ID sent to ${data.emailSentTo || 'your email'}`);
-      }
-    } catch {
-      // ignore
-    } finally {
-      setResendingEmail(false);
     }
   }
 
@@ -254,29 +226,31 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
       <Header />
 
       <main className="flex-1 max-w-3xl mx-auto w-full px-3 sm:px-6 py-6 sm:py-12">
-        <div className="bg-white rounded-3xl border border-stone-200 p-5 sm:p-8 shadow-sm space-y-6">
+        <div className="bg-white rounded-3xl border border-stone-200 p-5 sm:p-8 shadow-xs space-y-6">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-200 pb-4">
             <div>
               <span className="text-[11px] uppercase tracking-wider font-bold text-stone-400">
-                Order Reference (ORD-YYMMDD-SS-NNNN)
+                Order Reference
               </span>
               <h1 className="text-lg sm:text-2xl font-extrabold text-stone-900 font-mono">
                 {orderId}
               </h1>
               {order?.invoiceNumber && (
                 <p className="text-xs text-stone-500 font-mono mt-0.5">
-                  GST Tax Invoice (CGST Rule 46b): <strong>{order.invoiceNumber}</strong>
+                  GST Tax Invoice: <strong>{order.invoiceNumber}</strong>
                 </p>
               )}
             </div>
 
             <div className="flex items-center gap-2">
-              <Link
-                href={`/order/${orderId}/invoice`}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-100 hover:bg-amber-200 text-amber-950 border border-amber-300 text-xs font-extrabold transition"
-              >
-                {t('downloadInvoice')}
-              </Link>
+              {isOwner && (
+                <Link
+                  href={`/order/${orderId}/invoice`}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-100 hover:bg-amber-200 text-amber-950 border border-amber-300 text-xs font-extrabold transition"
+                >
+                  {t('downloadInvoice')}
+                </Link>
+              )}
               <span
                 className={`px-3 py-1.5 rounded-full text-xs font-extrabold uppercase tracking-wider ${
                   isConfirmed
@@ -292,6 +266,39 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
           {!order ? (
             <div className="py-12 text-center text-stone-500 text-sm">
               Loading your order details...
+            </div>
+          ) : !isOwner ? (
+            /* Visitor Protection: Unauthenticated visitors cannot view personal details or perform any tasks */
+            <div className="py-6 space-y-5">
+              <div className="p-5 rounded-2xl bg-stone-50 border border-stone-200 space-y-2 text-center">
+                <span className="inline-block px-3 py-1 rounded-full bg-stone-900 text-amber-300 text-[10px] font-bold uppercase tracking-widest">
+                  PROTECTED CUSTOMER ORDER
+                </span>
+                <h2 className="text-base sm:text-lg font-serif font-bold text-stone-900">
+                  {lang === 'hi'
+                    ? 'यह ऑर्डर ग्राहक के पासवर्ड द्वारा सुरक्षित है'
+                    : 'Personal Order Details & Actions Are Restricted to the Account Owner'}
+                </h2>
+                <p className="text-xs text-stone-600 max-w-lg mx-auto leading-relaxed">
+                  {lang === 'hi'
+                    ? 'ग्राहक की गोपनीयता की सुरक्षा के लिए नाम, पता, फ़ोन नंबर, ईमेल और टैक्स बिल केवल लॉग-इन किए गए ग्राहक को ही दिखाई देते हैं।'
+                    : 'For customer security, personal details, addresses, GST tax invoices, and order actions are hidden from visitors. Sign in with the password for the account that placed this order.'}
+                </p>
+                <div className="pt-2 flex flex-wrap justify-center gap-3">
+                  <Link
+                    href="/profile"
+                    className="px-5 py-2.5 rounded-xl bg-stone-950 text-amber-300 text-xs font-bold uppercase tracking-wider hover:bg-stone-800 transition"
+                  >
+                    {lang === 'hi' ? 'अकाउंट में साइन इन करें' : 'Sign In to View Order'}
+                  </Link>
+                  <Link
+                    href="/track"
+                    className="px-5 py-2.5 rounded-xl bg-white border border-stone-300 text-stone-800 text-xs font-bold uppercase tracking-wider hover:bg-stone-100 transition"
+                  >
+                    {lang === 'hi' ? 'ट्रैकिंग आईडी से ट्रैक करें' : 'Track via AWB ID'}
+                  </Link>
+                </div>
+              </div>
             </div>
           ) : isConfirmed ? (
             <div className="py-2 sm:py-4 space-y-6">
@@ -311,44 +318,20 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
                 </div>
               </div>
 
-              {/* Automated Email Receipt Confirmation Card */}
-              <div className="bg-emerald-50/90 border border-emerald-200 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-700 text-white text-[11px] font-extrabold uppercase tracking-wider">
+              {/* Clean Email Dispatch Status Notice (No Resend / No Raw Email Preview Button) */}
+              {order.customerEmail && (
+                <div className="bg-emerald-50/90 border border-emerald-200 rounded-2xl p-4 sm:p-5 flex items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-700 text-white text-[10px] font-extrabold uppercase tracking-wider">
                       {t('emailReceiptSentBadge')}
                     </span>
+                    <p className="text-xs text-emerald-950 font-medium pt-1">
+                      Official GST Tax Invoice and Tracking ID dispatched to{' '}
+                      <strong className="font-mono">{order.customerEmail}</strong>.
+                    </p>
                   </div>
-                  <p className="text-xs text-emerald-950 font-medium">
-                    Sent to{' '}
-                    <strong className="font-mono underline">
-                      {order.emailReceipt?.to_email ||
-                        order.customerEmail ||
-                        'patron@zariyajaipur.in'}
-                    </strong>{' '}
-                    with your GST Tax Invoice & Tracking ID.
-                  </p>
                 </div>
-                <div className="flex flex-wrap items-center gap-2 shrink-0">
-                  {order.emailReceipt?.html_preview && (
-                    <button
-                      type="button"
-                      onClick={() => setShowEmailModal(true)}
-                      className="px-3.5 py-2 rounded-xl bg-white hover:bg-emerald-100 text-emerald-900 border border-emerald-300 text-xs font-extrabold shadow-sm transition"
-                    >
-                      {t('viewEmailReceipt')}
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    disabled={resendingEmail}
-                    onClick={handleResendEmail}
-                    className="px-3.5 py-2 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-bold transition disabled:opacity-50"
-                  >
-                    {resendingEmail ? 'Sending...' : t('resendEmailReceipt')}
-                  </button>
-                </div>
-              </div>
+              )}
 
               {/* Tracking ID & Live Shipment Card */}
               {order.trackingId && (
@@ -356,7 +339,7 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/15 pb-4">
                     <div>
                       <span className="text-[11px] uppercase tracking-widest text-amber-300 font-bold block">
-                        {t('trackingIdLabel')} (12-Digit AWB)
+                        {t('trackingIdLabel')}
                       </span>
                       <div className="flex items-center gap-2.5 mt-1">
                         <span
@@ -374,7 +357,7 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
                         </button>
                       </div>
                       <p className="text-[11px] text-rose-200/90 mt-1">
-                        Use this private 12-digit Tracking ID anytime to check your live delivery status.
+                        Use this Tracking ID anytime to check your live delivery status.
                       </p>
                     </div>
 
@@ -447,12 +430,14 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
               )}
 
               <div className="pt-2 flex flex-wrap justify-center gap-3">
-                <Link
-                  href={`/track?id=${encodeURIComponent(order.trackingId || order.orderId)}`}
-                  className="px-5 py-3 rounded-xl bg-rose-900 hover:bg-rose-950 text-white font-semibold text-xs sm:text-sm"
-                >
-                  Track Shipment
-                </Link>
+                {order.trackingId && (
+                  <Link
+                    href={`/track?id=${encodeURIComponent(order.trackingId)}`}
+                    className="px-5 py-3 rounded-xl bg-rose-900 hover:bg-rose-950 text-white font-semibold text-xs sm:text-sm"
+                  >
+                    Track Shipment
+                  </Link>
+                )}
                 <Link
                   href={`/order/${order.orderId}/invoice`}
                   className="px-5 py-3 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-950 border border-amber-300 font-bold text-xs sm:text-sm"
@@ -483,27 +468,29 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
 
               {/* Dedicated 4-Minute (240-Second) QR Session Timer + Dynamic QR */}
               <div className="flex flex-col items-center justify-center p-5 sm:p-6 rounded-2xl bg-stone-50 border border-stone-200 space-y-3">
-                <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-rose-950 text-amber-300 text-xs font-mono font-extrabold shadow-sm">
+                <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-rose-950 text-amber-300 text-xs font-mono font-extrabold shadow-xs">
                   <span>Session Active:</span>
                   <span>
                     {mins}:{secs}
                   </span>
                 </div>
 
-                <DynamicQrSvg value={order.qrPayload} />
+                <DynamicQrSvg value={order.qrPayload || 'upi://pay'} />
                 <p className="text-xs text-stone-500">{t('scanWithAnyUpiApp')}</p>
-                <a
-                  href={order.qrPayload}
-                  className="w-full sm:w-auto text-center inline-flex items-center justify-center px-6 py-3.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-sm shadow-sm"
-                >
-                  {t('openUpiApp')}
-                </a>
+                {order.qrPayload && (
+                  <a
+                    href={order.qrPayload}
+                    className="w-full sm:w-auto text-center inline-flex items-center justify-center px-6 py-3.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-sm shadow-xs"
+                  >
+                    {t('openUpiApp')}
+                  </a>
+                )}
               </div>
 
-              {/* 1-Tap UPI Payment Verification */}
+              {/* Owner-Only UPI Payment Verification */}
               <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 flex flex-col sm:flex-row items-center justify-between gap-3">
                 <div className="text-xs text-amber-950">
-                  <strong>Completed your UPI payment?</strong> Tap below to verify payment instantly and receive your GST Invoice & Tracking ID on email.
+                  <strong>Completed your UPI payment?</strong> Tap below to verify payment and generate your GST Tax Invoice & Tracking ID.
                 </div>
                 <button
                   type="button"
@@ -517,155 +504,8 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
               {message && <p className="text-xs font-semibold text-rose-800 text-center">{message}</p>}
             </div>
           )}
-
-          {/* Structured Reference & GST Invoice Numbering Breakdown (Explaining Every Digit & Segment) */}
-          {order && (
-            <section className="rounded-2xl bg-stone-50 border border-stone-200 p-4 sm:p-5 space-y-4">
-              <div>
-                <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-rose-900 block">
-                  INDIAN E-COMMERCE & CGST RULE 46(b) STANDARD
-                </span>
-                <h3 className="text-sm sm:text-base font-serif font-bold text-stone-900 mt-0.5">
-                  {t('refCodeBreakdownTitle')}
-                </h3>
-                <p className="text-xs text-stone-500 mt-0.5">
-                  {lang === 'hi'
-                    ? 'कोई रैंडम अक्षर नहीं — हर अंक की अपनी आधिकारिक पहचान और अर्थ है:'
-                    : 'Zero random hex strings — every segment and digit count follows structured fiscal & courier standards:'}
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-                {/* 1. Order Reference Breakdown */}
-                <div className="rounded-xl bg-white border border-stone-200 p-3.5 space-y-2">
-                  <div className="border-b border-stone-100 pb-2">
-                    <span className="text-[10px] uppercase tracking-wider text-stone-400 font-bold block">
-                      1. Order Reference (18 Chars)
-                    </span>
-                    <span className="font-mono font-extrabold text-stone-900 text-xs">
-                      {order.orderId}
-                    </span>
-                  </div>
-                  <ul className="space-y-1.5 text-[11px] text-stone-600">
-                    <li>
-                      <strong className="font-mono text-stone-900">ORD</strong> (3 Letters): Order Document Prefix
-                    </li>
-                    <li>
-                      <strong className="font-mono text-stone-900">YYMMDD</strong> (6 Digits): Order Date (Year/Month/Day)
-                    </li>
-                    <li>
-                      <strong className="font-mono text-stone-900">08</strong> (2 Digits): Rajasthan GST State Code
-                    </li>
-                    <li>
-                      <strong className="font-mono text-stone-900">NNNN</strong> (4 Digits): Consecutive Fiscal Order Serial
-                    </li>
-                  </ul>
-                </div>
-
-                {/* 2. GST Tax Invoice Breakdown */}
-                <div className="rounded-xl bg-white border border-stone-200 p-3.5 space-y-2">
-                  <div className="border-b border-stone-100 pb-2">
-                    <span className="text-[10px] uppercase tracking-wider text-stone-400 font-bold block">
-                      2. GST Tax Invoice (16 Chars Max)
-                    </span>
-                    <span className="font-mono font-extrabold text-stone-900 text-xs">
-                      {order.invoiceNumber || 'INV-KC-2026-1001'}
-                    </span>
-                  </div>
-                  <ul className="space-y-1.5 text-[11px] text-stone-600">
-                    <li>
-                      <strong className="font-mono text-stone-900">INV</strong> (3 Letters): GST Tax Invoice Prefix
-                    </li>
-                    <li>
-                      <strong className="font-mono text-stone-900">KC</strong> (2 Letters): Store Series (Kurti Couture)
-                    </li>
-                    <li>
-                      <strong className="font-mono text-stone-900">2026</strong> (4 Digits): Financial Year (FY 2026-27)
-                    </li>
-                    <li>
-                      <strong className="font-mono text-stone-900">NNNN</strong> (4 Digits): Consecutive Invoice Serial (CGST Rule 46b)
-                    </li>
-                  </ul>
-                </div>
-
-                {/* 3. Shipment Tracking ID Breakdown */}
-                <div className="rounded-xl bg-white border border-stone-200 p-3.5 space-y-2">
-                  <div className="border-b border-stone-100 pb-2">
-                    <span className="text-[10px] uppercase tracking-wider text-stone-400 font-bold block">
-                      3. Courier Tracking AWB (12 Digits)
-                    </span>
-                    <span className="font-mono font-extrabold text-amber-900 text-xs">
-                      {order.trackingId || 'TRK-KC-261019081001'}
-                    </span>
-                  </div>
-                  <ul className="space-y-1.5 text-[11px] text-stone-600">
-                    <li>
-                      <strong className="font-mono text-stone-900">TRK-KC</strong> (6 Chars): Courier Air Waybill Prefix
-                    </li>
-                    <li>
-                      <strong className="font-mono text-stone-900">YYMMDD</strong> (6 Digits): Dispatch Booking Date
-                    </li>
-                    <li>
-                      <strong className="font-mono text-stone-900">08</strong> (2 Digits): Origin Hub State Code (Jaipur, RJ)
-                    </li>
-                    <li>
-                      <strong className="font-mono text-stone-900">PPPP</strong> (4 Digits): Confidential Verification PIN
-                    </li>
-                  </ul>
-                </div>
-              </div>
-            </section>
-          )}
         </div>
       </main>
-
-      {/* HTML Email Receipt Preview Modal */}
-      {showEmailModal && order?.emailReceipt?.html_preview && (
-        <div
-          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4"
-          onClick={() => setShowEmailModal(false)}
-        >
-          <div
-            className="bg-white rounded-3xl max-w-2xl w-full max-h-[88vh] flex flex-col overflow-hidden shadow-2xl border border-stone-200"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="px-5 py-4 bg-stone-900 text-white flex items-center justify-between">
-              <div>
-                <span className="text-[10px] uppercase tracking-widest text-amber-300 font-bold block">
-                  Order Confirmation Email
-                </span>
-                <h3 className="text-xs sm:text-sm font-bold truncate">
-                  {order.emailReceipt.subject}
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowEmailModal(false)}
-                className="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-bold"
-              >
-                Close
-              </button>
-            </div>
-            <div className="px-5 py-2.5 bg-stone-100 border-b border-stone-200 text-xs text-stone-600 flex flex-wrap justify-between gap-2">
-              <span>
-                <strong>Sent To:</strong> {order.emailReceipt.to_email}
-              </span>
-              <span>
-                <strong>Tracking ID:</strong>{' '}
-                <code className="font-mono font-bold text-rose-900">
-                  {order.emailReceipt.tracking_id}
-                </code>
-              </span>
-            </div>
-            <div className="p-3 sm:p-4 overflow-y-auto flex-1 bg-stone-50">
-              <div
-                className="bg-white rounded-xl shadow-sm overflow-hidden"
-                dangerouslySetInnerHTML={{ __html: order.emailReceipt.html_preview }}
-              />
-            </div>
-          </div>
-        </div>
-      )}
 
       <Footer />
     </div>

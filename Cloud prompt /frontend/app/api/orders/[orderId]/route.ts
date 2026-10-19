@@ -1,45 +1,43 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
-  dispatchOrderConfirmationEmail,
-  explainReferenceCodes,
-  getOrderEmailReceipt,
   getServerOrder,
   getStoreProfile,
+  verifyAccountSessionToken,
+  verifyAdminTokenHeader,
+  verifyOrderAccessToken,
 } from '../../../../lib/serverStore';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   context: { params: { orderId: string } }
 ) {
   const orderId = context.params.orderId;
-  const backendUrl = process.env.BACKEND_INTERNAL_URL;
-
-  if (backendUrl) {
-    try {
-      const res = await fetch(`${backendUrl}/api/orders/${encodeURIComponent(orderId)}`, {
-        cache: 'no-store',
-      });
-      if (res.ok) {
-        const data = await res.json();
-        return NextResponse.json(data);
-      }
-    } catch {
-      // Fallback to local server store
-    }
-  }
-
   const order = getServerOrder(orderId);
   if (!order) {
     return NextResponse.json({ success: false, error: 'Order not found' }, { status: 404 });
   }
 
-  const emailReceipt = getOrderEmailReceipt(order.order_id);
+  const orderToken =
+    req.headers.get('x-order-token') ||
+    req.nextUrl.searchParams.get('orderToken') ||
+    '';
+  const accountToken =
+    req.headers.get('x-account-token') ||
+    req.nextUrl.searchParams.get('accountToken') ||
+    '';
+  const isAdmin = verifyAdminTokenHeader(req.headers.get('x-admin-token'));
+
+  const hasValidOrderToken = verifyOrderAccessToken(orderToken, order.order_id);
+  const accountCheck = verifyAccountSessionToken(accountToken, order.customer_email);
+  const isAuthorizedOwner = Boolean(hasValidOrderToken || accountCheck.valid || isAdmin);
+
   const storeProfile = getStoreProfile();
 
   return NextResponse.json({
     success: true,
+    authorizedOwner: isAuthorizedOwner,
     orderId: order.order_id,
     status: order.status,
     subtotalPaise: order.subtotal_paise,
@@ -54,10 +52,11 @@ export async function GET(
     supplyType: order.supply_type,
     amountPaise: order.amount_paise,
     invoiceNumber: order.invoice_number,
-    customerName: order.customer_name,
-    customerEmail: order.customer_email,
-    phone: order.phone,
-    address: order.address,
+    // Strictly protect personal details from unauthenticated visitors
+    customerName: isAuthorizedOwner ? order.customer_name : undefined,
+    customerEmail: isAuthorizedOwner ? order.customer_email : undefined,
+    phone: isAuthorizedOwner ? order.phone : undefined,
+    address: isAuthorizedOwner ? order.address : undefined,
     items: order.items,
     trackingId: order.tracking_id,
     courierName: order.courier_name,
@@ -66,43 +65,11 @@ export async function GET(
     trackingHistory: order.tracking_history || [],
     emailSent: order.email_sent,
     emailSentAt: order.email_sent_at,
-    emailReceipt,
     storeProfile,
-    referenceExplanation: explainReferenceCodes(
-      order.order_id,
-      order.invoice_number,
-      order.tracking_id
-    ),
-    qrExpiresAt: order.qr_expires_at,
-    qrPayload: order.qr_payload,
+    qrExpiresAt: isAuthorizedOwner ? order.qr_expires_at : undefined,
+    qrPayload: isAuthorizedOwner ? order.qr_payload : undefined,
     createdAt: order.created_at,
     updatedAt: order.updated_at,
     paymentId: order.payment_id || null,
   });
-}
-
-// POST /api/orders/[orderId] -> Resend Order Confirmation + GST Invoice + Tracking Email
-export async function POST(
-  req: NextRequest,
-  context: { params: { orderId: string } }
-) {
-  const orderId = context.params.orderId;
-  const order = getServerOrder(orderId);
-  if (!order) {
-    return NextResponse.json({ success: false, error: 'Order not found' }, { status: 404 });
-  }
-  try {
-    const body = await req.json().catch(() => ({}));
-    if (body?.email && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(body.email).trim())) {
-      order.customer_email = String(body.email).trim().toLowerCase();
-    }
-    const emailReceipt = dispatchOrderConfirmationEmail(order);
-    return NextResponse.json({
-      success: true,
-      emailSentTo: order.customer_email,
-      emailReceipt,
-    });
-  } catch {
-    return NextResponse.json({ success: false, error: 'Could not resend email' }, { status: 400 });
-  }
 }

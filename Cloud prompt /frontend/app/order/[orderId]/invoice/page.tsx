@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { rupees, rupeesInWords } from '../../../../lib/store';
+import { getOrderAccessToken, rupees, rupeesInWords, useStore } from '../../../../lib/store';
 
 type StoreProfileData = {
   storeName: string;
@@ -22,6 +22,7 @@ type StoreProfileData = {
 };
 
 type InvoiceOrder = {
+  authorizedOwner?: boolean;
   orderId: string;
   invoiceNumber: string;
   createdAt: string;
@@ -57,11 +58,24 @@ type InvoiceOrder = {
 
 export default function InvoicePage({ params }: { params: { orderId: string } }) {
   const { orderId } = params;
+  const { customerProfile } = useStore();
   const [order, setOrder] = useState<InvoiceOrder | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`/api/orders/${orderId}`, { cache: 'no-store' })
+    useStore.getState().hydrate();
+  }, []);
+
+  useEffect(() => {
+    const orderToken = getOrderAccessToken(orderId);
+    const accountToken = customerProfile.sessionToken || '';
+    fetch(`/api/orders/${orderId}`, {
+      cache: 'no-store',
+      headers: {
+        ...(orderToken ? { 'x-order-token': orderToken } : {}),
+        ...(accountToken ? { 'x-account-token': accountToken } : {}),
+      },
+    })
       .then((r) => r.json())
       .then((d) => {
         if (d && d.orderId) {
@@ -70,7 +84,7 @@ export default function InvoicePage({ params }: { params: { orderId: string } })
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, [orderId]);
+  }, [orderId, customerProfile.sessionToken]);
 
   if (loading) {
     return (
@@ -80,13 +94,32 @@ export default function InvoicePage({ params }: { params: { orderId: string } })
     );
   }
 
-  if (!order) {
+  if (!order || !order.authorizedOwner) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-stone-100 p-6 text-center">
-        <h1 className="text-xl font-bold text-stone-900 mb-2">Invoice Not Found</h1>
-        <Link href="/" className="px-4 py-2 rounded-xl bg-stone-950 text-white text-xs font-bold">
-          Return to Store
-        </Link>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-stone-100 p-6 text-center space-y-3">
+        <span className="px-3 py-1 rounded-full bg-stone-900 text-amber-300 text-[10px] font-bold uppercase tracking-widest">
+          PROTECTED TAX DOCUMENT
+        </span>
+        <h1 className="text-xl font-bold text-stone-900">
+          Tax Invoice Restricted to Account Owner
+        </h1>
+        <p className="text-xs text-stone-600 max-w-md">
+          For customer privacy, official GST Tax Invoices containing personal billing and delivery addresses can only be viewed by the authenticated customer who placed the order.
+        </p>
+        <div className="flex gap-3 pt-1">
+          <Link
+            href="/profile"
+            className="px-4 py-2 rounded-xl bg-stone-950 text-amber-300 text-xs font-bold uppercase tracking-wider"
+          >
+            Sign In to Account
+          </Link>
+          <Link
+            href="/"
+            className="px-4 py-2 rounded-xl bg-white border border-stone-300 text-stone-900 text-xs font-bold uppercase tracking-wider"
+          >
+            Return to Store
+          </Link>
+        </div>
       </div>
     );
   }
@@ -540,7 +573,7 @@ export default function InvoicePage({ params }: { params: { orderId: string } })
           </div>
         </div>
 
-        {/* Row 5: Statutory Declaration, Numbering Legend & Authorized Signatory */}
+        {/* Row 5: Statutory Declaration & Authorized Signatory */}
         <div className="grid grid-cols-1 md:grid-cols-12 p-4 gap-4 items-end">
           <div className="md:col-span-8 space-y-1.5 text-[10px] text-stone-700">
             <p className="font-bold uppercase text-stone-900">Declaration & Terms of Sale:</p>
@@ -549,9 +582,6 @@ export default function InvoicePage({ params }: { params: { orderId: string } })
             </p>
             <p>
               2. All disputes are subject to Jaipur (Rajasthan) jurisdiction only. 7-day size exchange valid with original barcode tags intact.
-            </p>
-            <p className="font-mono text-[9.5px] text-stone-600 pt-1">
-              <strong>Document Numbering Key:</strong> Order ID <code>{order.orderId}</code> = <code>ORD</code> + 6-Digit Date (<code>YYMMDD</code>) + State Code (<code>08</code>) + 4-Digit Serial | Invoice <code>{order.invoiceNumber}</code> = <code>INV-KC-2026-NNNN</code> (16-Char CGST Rule 46b Format).
             </p>
           </div>
 

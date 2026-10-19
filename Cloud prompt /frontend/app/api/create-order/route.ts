@@ -42,6 +42,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       orderId: created.orderId,
+      orderAccessToken: created.orderAccessToken,
       amountPaise: created.amountPaise,
       subtotalPaise: created.subtotalPaise,
       discountPaise: created.discountPaise,
@@ -49,7 +50,6 @@ export async function POST(req: NextRequest) {
       invoiceNumber: created.invoiceNumber,
       expiresInSeconds: created.expiresInSeconds,
       qrPayload: created.qrPayload,
-      demoMode: true,
     });
   } catch {
     return NextResponse.json(

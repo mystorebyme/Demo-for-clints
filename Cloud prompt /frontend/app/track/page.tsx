@@ -137,29 +137,6 @@ export default function TrackOrderPage() {
             </button>
           </form>
 
-          {/* 12-Digit AWB Structure Legend + Sample Button */}
-          <div className="mt-4 pt-4 border-t border-stone-100 flex flex-wrap items-center justify-between gap-2 text-xs text-stone-600">
-            <div>
-              <span className="font-bold text-stone-800">AWB Format:</span>{' '}
-              <code className="font-mono bg-stone-100 px-1.5 py-0.5 rounded">TRK-KC-YYMMDDSSPPPP</code>{' '}
-              <span className="text-[11px] text-stone-500">
-                (6-Digit Date + 08 State Code + 4-Digit Security PIN)
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                setQueryId('TRK-KC-261019081001');
-                lookupOrder('TRK-KC-261019081001');
-              }}
-              className="text-[11px] font-bold text-amber-900 hover:text-stone-950 underline"
-            >
-              {lang === 'hi'
-                ? 'सैंपल ट्रैकिंग देखें: TRK-KC-261019081001'
-                : 'Load Sample Shipment: TRK-KC-261019081001'}
-            </button>
-          </div>
-
           {error && (
             <div className="mt-4 p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs sm:text-sm font-medium">
               {error}

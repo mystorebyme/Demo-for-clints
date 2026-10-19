@@ -65,18 +65,29 @@ export default function Header() {
     }
   }, [customerProfile, emailInput]);
 
-  // Whenever drawer opens and an email is connected, load latest orders & profile from /api/account
+  // Whenever drawer opens and an authenticated account session is active, load latest orders & profile from /api/account
   useEffect(() => {
     if (!drawerOpen) return;
     const activeEmail = customerProfile.email?.trim().toLowerCase();
-    if (!activeEmail) return;
+    const activeToken = customerProfile.sessionToken;
+    if (!activeEmail || !activeToken) {
+      setSyncedOrders([]);
+      return;
+    }
 
     let cancelled = false;
     (async () => {
       try {
         const res = await fetch(`/api/account?email=${encodeURIComponent(activeEmail)}`, {
           cache: 'no-store',
+          headers: {
+            'x-account-token': activeToken,
+          },
         });
+        if (res.status === 401) {
+          disconnectCustomerProfile();
+          return;
+        }
         if (!res.ok) return;
         const data = await res.json();
         if (cancelled || !data?.success) return;
@@ -86,6 +97,7 @@ export default function Header() {
         if (data.profile) {
           setCustomerProfile({
             email: data.profile.email || activeEmail,
+            sessionToken: activeToken,
             name: data.profile.name || customerProfile.name,
             phone: data.profile.phone || customerProfile.phone,
             pincode: data.profile.pincode || customerProfile.pincode,
@@ -106,7 +118,7 @@ export default function Header() {
     return () => {
       cancelled = true;
     };
-  }, [drawerOpen, customerProfile.email]);
+  }, [drawerOpen, customerProfile.email, customerProfile.sessionToken]);
 
   const handleRequestOtp = async (overrideEmail?: string) => {
     const targetEmail = (overrideEmail ?? emailInput).trim().toLowerCase();
@@ -506,73 +518,18 @@ export default function Header() {
                     </div>
                   ) : (
                     <div className="mt-3 space-y-2.5">
-                      <div className="flex gap-2">
-                        <input
-                          type="email"
-                          value={emailInput}
-                          onChange={(e) => setEmailInput(e.target.value)}
-                          placeholder={t('emailPlaceholder')}
-                          className="flex-1 min-w-0 px-3 py-2 text-xs rounded-xl border border-stone-300 bg-stone-50 text-stone-900 focus:outline-none focus:border-stone-900"
-                        />
-                        <button
-                          type="button"
-                          disabled={syncLoading}
-                          onClick={() => handleRequestOtp()}
-                          className="px-3.5 py-2 rounded-xl bg-stone-950 text-amber-300 text-xs font-bold uppercase tracking-wider hover:bg-stone-800 transition shrink-0 disabled:opacity-50"
-                        >
-                          {syncLoading ? '...' : lang === 'hi' ? 'OTP भेजें' : 'Send OTP'}
-                        </button>
-                      </div>
-
-                      {otpPendingEmail && (
-                        <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 space-y-2">
-                          <div className="flex items-center justify-between text-[11px]">
-                            <span className="font-semibold text-stone-800">
-                              6-Digit OTP ({otpPendingEmail})
-                            </span>
-                            {otpPreview && (
-                              <span className="font-mono font-bold text-amber-950">
-                                Code: {otpPreview}
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex gap-2">
-                            <input
-                              type="text"
-                              maxLength={6}
-                              value={otpInput}
-                              onChange={(e) =>
-                                setOtpInput(e.target.value.replace(/\D/g, '').slice(0, 6))
-                              }
-                              placeholder="Enter 6-digit OTP"
-                              className="flex-1 px-3 py-1.5 rounded-lg border border-stone-300 bg-white font-mono text-xs font-bold tracking-widest"
-                            />
-                            <button
-                              type="button"
-                              disabled={syncLoading || otpInput.length !== 6}
-                              onClick={handleVerifyOtp}
-                              className="px-3 py-1.5 rounded-lg bg-emerald-800 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50"
-                            >
-                              Verify
-                            </button>
-                          </div>
-                        </div>
-                      )}
-
-                      <button
-                        type="button"
-                        onClick={() => handleRequestOtp('priya.sharma@gmail.com')}
-                        className="w-full text-left px-3 py-2 rounded-xl border border-amber-300/80 bg-amber-50/70 hover:bg-amber-100/70 transition text-[11px] text-amber-950 flex items-center justify-between"
+                      <p className="text-[11px] text-stone-600 leading-relaxed">
+                        {lang === 'hi'
+                          ? 'अपना ऑर्डर इतिहास, सेव किया गया पता और पसंदीदा देखने के लिए अपने पासवर्ड से सुरक्षित साइन इन करें।'
+                          : 'Sign in with your account password to access your saved delivery address, order history, and wishlist.'}
+                      </p>
+                      <Link
+                        href="/profile"
+                        onClick={() => setDrawerOpen(false)}
+                        className="block w-full text-center py-2.5 px-3 rounded-xl bg-stone-950 text-amber-300 text-xs font-bold uppercase tracking-wider hover:bg-stone-800 transition"
                       >
-                        <span>
-                          {lang === 'hi'
-                            ? 'प्रिया शर्मा (priya.sharma@gmail.com) OTP वेरिफाई करें'
-                            : 'Verify Sample Patron: priya.sharma@gmail.com'}
-                        </span>
-                        <span className="font-bold underline">
-                          {lang === 'hi' ? 'OTP: 100108' : 'OTP: 100108'}
-                        </span>
-                      </button>
+                        {lang === 'hi' ? 'साइन इन / अकाउंट खोलें' : 'Sign In / Create Account'}
+                      </Link>
                     </div>
                   )}
 

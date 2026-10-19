@@ -244,44 +244,6 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Interactive Privilege Code Bar (1-Tap Apply, Zero Emojis) */}
-      <section className="bg-white border-b border-stone-200 py-3 px-3 sm:px-4 shadow-sm">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div className="flex items-center gap-2 text-xs font-bold text-stone-800">
-            <span className="inline-block w-2 h-2 rounded-full bg-amber-600" />
-            <span>
-              {lang === 'hi'
-                ? 'फेस्टिव कूपन (टैप करके लागू करें):'
-                : 'Festive Offers (Tap to auto-apply at checkout):'}
-            </span>
-          </div>
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
-            {[
-              { code: 'FIRST10', label: 'FIRST10 - 10% OFF' },
-              { code: 'DIWALI20', label: 'DIWALI20 - 20% OFF' },
-              { code: 'JAIPUR15', label: 'JAIPUR15 - 15% OFF' },
-              { code: 'ROYAL250', label: 'ROYAL250 - ₹250 OFF' },
-            ].map((c) => {
-              const active = appliedCoupon === c.code;
-              return (
-                <button
-                  key={c.code}
-                  type="button"
-                  onClick={() => setAppliedCoupon(active ? '' : c.code)}
-                  className={`shrink-0 px-2.5 py-1 rounded-full text-[11px] font-mono font-bold border transition ${
-                    active
-                      ? 'bg-emerald-800 text-white border-emerald-800 shadow-sm'
-                      : 'bg-amber-50 hover:bg-amber-100 text-rose-950 border-amber-300'
-                  }`}
-                >
-                  {active ? `APPLIED: ${c.code}` : c.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-
       {/* Catalog Controls & 2-Column Mobile / 4-Column Desktop Product Grid */}
       <main id="collection" className="flex-1 max-w-7xl mx-auto w-full px-3 sm:px-6 lg:px-8 py-6 sm:py-10">
         <div id="catalog" className="bg-white rounded-2xl sm:rounded-3xl border border-stone-200 p-3.5 sm:p-5 mb-6 sm:mb-8 shadow-sm space-y-3.5">

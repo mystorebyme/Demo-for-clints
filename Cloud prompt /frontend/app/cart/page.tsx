@@ -6,15 +6,6 @@ import Header from '../../components/Header';
 import Footer from '../../components/Footer';
 import { rupees, useStore } from '../../lib/store';
 
-type AvailableCoupon = {
-  code: string;
-  description_en: string;
-  description_hi: string;
-  discount_type: 'PERCENT' | 'FLAT';
-  discount_value: number;
-  min_order_paise: number;
-};
-
 export default function CartPage() {
   const {
     cart,
@@ -23,26 +14,19 @@ export default function CartPage() {
     removeFromCart,
     appliedCoupon,
     setAppliedCoupon,
+    customerProfile,
     hydrate,
     t,
   } = useStore();
 
   const [couponInput, setCouponInput] = useState('');
-  const [availableCoupons, setAvailableCoupons] = useState<AvailableCoupon[]>([]);
   const [discountPaise, setDiscountPaise] = useState(0);
   const [couponMessage, setCouponMessage] = useState<string | null>(null);
   const [couponError, setCouponError] = useState<string | null>(null);
+  const [couponTerms, setCouponTerms] = useState<string | null>(null);
 
   useEffect(() => {
     hydrate();
-    fetch('/api/coupons')
-      .then((r) => r.json())
-      .then((d) => {
-        if (Array.isArray(d.coupons)) {
-          setAvailableCoupons(d.coupons);
-        }
-      })
-      .catch(() => {});
   }, [hydrate]);
 
   useEffect(() => {
@@ -53,35 +37,43 @@ export default function CartPage() {
 
   const subtotalPaise = cart.reduce((acc, item) => acc + item.price_paise * item.qty, 0);
 
-  // Validate coupon against server whenever cart or appliedCoupon changes
+  // Validate coupon against server whenever cart, appliedCoupon, or customerProfile changes
   useEffect(() => {
     if (cart.length === 0 || !appliedCoupon) {
       setDiscountPaise(0);
       setCouponMessage(null);
+      setCouponTerms(null);
       return;
     }
     fetch('/api/coupons', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code: appliedCoupon, subtotalPaise }),
+      body: JSON.stringify({
+        code: appliedCoupon,
+        subtotalPaise,
+        email: customerProfile.email || null,
+        phone: customerProfile.phone || null,
+      }),
     })
       .then((r) => r.json().then((d) => ({ ok: r.ok, d })))
       .then(({ ok, d }) => {
         if (ok && d.success) {
           setDiscountPaise(d.discountPaise || 0);
-          setCouponMessage(d.message || `Coupon ${d.code} applied!`);
+          setCouponMessage(d.message || `Promo code ${d.code} applied.`);
+          setCouponTerms(lang === 'hi' && d.terms_hi ? d.terms_hi : d.terms_en || null);
           setCouponError(null);
         } else {
           setDiscountPaise(0);
           setCouponMessage(null);
-          setCouponError(d.error || 'Coupon not eligible for current cart subtotal');
+          setCouponTerms(null);
+          setCouponError(d.error || 'Promo code is not eligible for this account or cart.');
         }
       })
       .catch(() => {});
-  }, [cart, subtotalPaise, appliedCoupon]);
+  }, [cart, subtotalPaise, appliedCoupon, customerProfile.email, customerProfile.phone, lang]);
 
-  const handleApplyCoupon = (codeToApply?: string) => {
-    const code = (codeToApply ?? couponInput).trim().toUpperCase();
+  const handleApplyCoupon = () => {
+    const code = couponInput.trim().toUpperCase();
     if (!code) return;
     setCouponInput(code);
     setAppliedCoupon(code);
@@ -92,6 +84,7 @@ export default function CartPage() {
     setAppliedCoupon('');
     setDiscountPaise(0);
     setCouponMessage(null);
+    setCouponTerms(null);
     setCouponError(null);
   };
 
@@ -108,9 +101,6 @@ export default function CartPage() {
 
         {cart.length === 0 ? (
           <div className="bg-white rounded-3xl border border-stone-200 p-10 sm:p-16 text-center shadow-sm">
-            <div className="w-16 h-16 mx-auto rounded-full bg-rose-50 text-rose-800 flex items-center justify-center text-2xl mb-4">
-              
-            </div>
             <h2 className="text-xl font-bold text-stone-900 mb-2">{t('emptyCartTitle')}</h2>
             <p className="text-stone-500 text-sm mb-6 max-w-md mx-auto">
               {t('emptyCartSubtitle')}
@@ -147,7 +137,8 @@ export default function CartPage() {
                         {displayName}
                       </Link>
                       <p className="text-xs text-stone-500 mt-0.5">
-                        {t('selectSize')}: <strong className="text-stone-700">{item.size || 'Free Size'}</strong>
+                        {t('selectSize')}:{' '}
+                        <strong className="text-stone-700">{item.size || 'Free Size'}</strong>
                       </p>
                       <p className="text-sm font-bold text-rose-900 mt-1">
                         {rupees(item.price_paise)} × {item.qty} ={' '}
@@ -191,23 +182,23 @@ export default function CartPage() {
               })}
             </div>
 
-            {/* Order Summary + Promo Code Engine */}
+            {/* Order Summary + Private Promo Code Input */}
             <aside className="bg-white rounded-3xl border border-stone-200 p-6 shadow-sm h-fit space-y-5">
               <h2 className="text-lg font-bold text-stone-900 border-b border-stone-200 pb-3">
                 {t('orderSummary')}
               </h2>
 
-              {/* Promo / Coupon Code Input */}
-              <div className="bg-stone-50 rounded-2xl p-4 border border-stone-200">
-                <label className="block text-xs font-bold uppercase tracking-wider text-stone-600 mb-2">
-                   {t('couponCode')}
+              {/* Private Promo / Coupon Code Input (No Public Coupon List) */}
+              <div className="bg-stone-50 rounded-2xl p-4 border border-stone-200 space-y-2.5">
+                <label className="block text-xs font-bold uppercase tracking-wider text-stone-600">
+                  {t('couponCode')}
                 </label>
                 <div className="flex gap-2">
                   <input
                     type="text"
                     value={couponInput}
                     onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
-                    placeholder="e.g. DIWALI20 or FIRST10"
+                    placeholder={lang === 'hi' ? 'प्रोमो कोड दर्ज करें' : 'Enter promo code'}
                     className="flex-1 px-3 py-2 rounded-xl border border-stone-300 text-xs font-mono font-bold uppercase focus:outline-none focus:ring-2 focus:ring-rose-500 bg-white"
                   />
                   {appliedCoupon ? (
@@ -221,7 +212,7 @@ export default function CartPage() {
                   ) : (
                     <button
                       type="button"
-                      onClick={() => handleApplyCoupon()}
+                      onClick={handleApplyCoupon}
                       className="px-3.5 py-2 rounded-xl bg-rose-800 hover:bg-rose-900 text-white text-xs font-bold"
                     >
                       {t('applyCoupon')}
@@ -230,53 +221,26 @@ export default function CartPage() {
                 </div>
 
                 {couponMessage && (
-                  <p className="mt-2 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1.5">
-                     {couponMessage}
+                  <p className="text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1.5">
+                    {couponMessage}
+                  </p>
+                )}
+                {couponTerms && (
+                  <p className="text-[11px] text-stone-600">
+                    <strong>T&C:</strong> {couponTerms}
                   </p>
                 )}
                 {couponError && (
-                  <p className="mt-2 text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
-                     {couponError}
+                  <p className="text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+                    {couponError}
                   </p>
                 )}
 
-                {/* 1-Click Available Coupons */}
-                {availableCoupons.length > 0 && (
-                  <div className="mt-3 pt-3 border-t border-stone-200/80">
-                    <p className="text-[11px] font-bold text-stone-500 mb-2">
-                      {t('availableCoupons')}:
-                    </p>
-                    <div className="space-y-1.5">
-                      {availableCoupons.map((c) => {
-                        const isSelected = appliedCoupon === c.code;
-                        return (
-                          <button
-                            key={c.code}
-                            type="button"
-                            onClick={() => handleApplyCoupon(c.code)}
-                            className={`w-full text-left p-2 rounded-xl border text-xs transition flex items-center justify-between gap-2 ${
-                              isSelected
-                                ? 'bg-emerald-50 border-emerald-400 text-emerald-950'
-                                : 'bg-white hover:bg-amber-50/60 border-stone-200 text-stone-700'
-                            }`}
-                          >
-                            <div>
-                              <span className="font-mono font-extrabold text-rose-800">
-                                {c.code}
-                              </span>
-                              <span className="block text-[11px] text-stone-500">
-                                {lang === 'hi' ? c.description_hi : c.description_en}
-                              </span>
-                            </div>
-                            <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-rose-100 text-rose-800 shrink-0">
-                              {isSelected ? ' Applied' : 'Apply'}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
+                <p className="text-[10px] text-stone-500 leading-relaxed pt-1 border-t border-stone-200/80">
+                  {lang === 'hi'
+                    ? 'नियम एवं शर्तें: प्रत्येक प्रोमो कोड प्रति ग्राहक अकाउंट केवल 1 बार मान्य है। फर्स्ट-ऑर्डर कोड केवल पहले ऑर्डर पर ही लागू होते हैं।'
+                    : 'Terms & Conditions: Each promo code is valid for 1 single redemption per customer account. First-order codes apply strictly on the first order only.'}
+                </p>
               </div>
 
               {/* Price Breakdown */}

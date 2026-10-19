@@ -23,7 +23,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const result = validateCartServerSide(body?.items || [], body?.couponCode || null);
+    const result = validateCartServerSide(body?.items || [], body?.couponCode || null, {
+      email: body?.email || null,
+      phone: body?.phone || null,
+    });
     if (!result.success) {
       return NextResponse.json(result, { status: 400 });
     }

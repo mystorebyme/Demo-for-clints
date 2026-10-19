@@ -22,6 +22,7 @@ export type CustomerProfile = {
   pincode: string;
   cityState: string;
   address: string;
+  sessionToken?: string;
   emailVerified?: boolean;
   connectedAt?: string | null;
 };
@@ -38,6 +39,31 @@ const LANG_STORAGE_KEY = 'fashion-store-lang-v1';
 const WISHLIST_STORAGE_KEY = 'fashion-wishlist-v1';
 const COUPON_STORAGE_KEY = 'fashion-coupon-v1';
 const PROFILE_STORAGE_KEY = 'fashion-customer-profile-v1';
+const ORDER_TOKENS_STORAGE_KEY = 'fashion-order-tokens-v1';
+
+export function saveOrderAccessToken(orderId: string, token: string) {
+  if (typeof window === 'undefined' || !orderId || !token) return;
+  try {
+    const raw = window.localStorage.getItem(ORDER_TOKENS_STORAGE_KEY);
+    const map: Record<string, string> = raw ? JSON.parse(raw) : {};
+    map[orderId.toUpperCase()] = token;
+    window.localStorage.setItem(ORDER_TOKENS_STORAGE_KEY, JSON.stringify(map));
+  } catch {
+    // ignore
+  }
+}
+
+export function getOrderAccessToken(orderId: string): string {
+  if (typeof window === 'undefined' || !orderId) return '';
+  try {
+    const raw = window.localStorage.getItem(ORDER_TOKENS_STORAGE_KEY);
+    if (!raw) return '';
+    const map: Record<string, string> = JSON.parse(raw);
+    return map[orderId.toUpperCase()] || '';
+  } catch {
+    return '';
+  }
+}
 
 const DEFAULT_PROFILE: CustomerProfile = {
   email: '',
@@ -118,6 +144,7 @@ function loadInitialProfile(): CustomerProfile {
           ? parsed.cityState
           : 'Jaipur, Rajasthan',
       address: typeof parsed?.address === 'string' ? parsed.address : '',
+      sessionToken: typeof parsed?.sessionToken === 'string' ? parsed.sessionToken : '',
       emailVerified: Boolean(parsed?.emailVerified),
       connectedAt: typeof parsed?.connectedAt === 'string' ? parsed.connectedAt : null,
     };
@@ -270,12 +297,15 @@ export const useStore = create<State>((set, get) => ({
     const next = exists ? current.filter((x) => x !== id) : [...current, id];
     saveWishlist(next);
     set({ wishlist: next });
-    const email = get().customerProfile.email;
-    if (email && typeof window !== 'undefined') {
+    const { email, sessionToken } = get().customerProfile;
+    if (email && sessionToken && typeof window !== 'undefined') {
       fetch('/api/account', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, wishlist: next }),
+        headers: {
+          'Content-Type': 'application/json',
+          'x-account-token': sessionToken,
+        },
+        body: JSON.stringify({ email, sessionToken, wishlist: next }),
       }).catch(() => {});
     }
     return !exists;
@@ -306,12 +336,16 @@ export const useStore = create<State>((set, get) => ({
     };
     saveProfile(updated);
     set({ customerProfile: updated });
-    if (updated.email && typeof window !== 'undefined') {
+    if (updated.email && updated.sessionToken && typeof window !== 'undefined') {
       fetch('/api/account', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-account-token': updated.sessionToken,
+        },
         body: JSON.stringify({
           email: updated.email,
+          sessionToken: updated.sessionToken,
           name: updated.name,
           phone: updated.phone,
           pincode: updated.pincode,

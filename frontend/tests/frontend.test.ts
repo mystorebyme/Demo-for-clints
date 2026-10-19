@@ -21,6 +21,7 @@ import {
   validatePincode,
 } from '../lib/store';
 import {
+  authenticateOrRegisterAccount,
   confirmServerOrder,
   createLiveProduct,
   createServerOrder,
@@ -43,8 +44,10 @@ import {
   upsertServerCoupon,
   validateAuthenticEmail,
   validateCartServerSide,
+  verifyAccountSessionToken,
   verifyAdminTokenHeader,
   verifyEmailWithOtp,
+  verifyOrderAccessToken,
 } from '../lib/serverStore';
 
 describe('Phase 1 Frontend — Luxury Catalog, Search, Filters, Sorting & Pagination', () => {
@@ -239,7 +242,7 @@ describe('Phase 1 Frontend — Zero-Trust Pricing, Coupons, Email Receipt Dispat
       customer: {
         name: 'Ananya Verma',
         email: 'ananya.verma@example.com',
-        phone: '9876543210',
+        phone: '9829012345',
         address: '42 MI Road, C-Scheme, Jaipur, Rajasthan, PIN: 302001',
       },
       items: [{ id: 1, qty: 2, size: 'M' }], // 79900 * 2 = 159800
@@ -249,11 +252,72 @@ describe('Phase 1 Frontend — Zero-Trust Pricing, Coupons, Email Receipt Dispat
     assert.equal(order1.success, true);
     if (!order1.success) return;
 
+    assert.equal(verifyOrderAccessToken(order1.orderAccessToken, order1.orderId), true);
+    assert.equal(verifyOrderAccessToken('forged-token', order1.orderId), false);
     assert.equal(order1.subtotalPaise, 159800);
     assert.equal(order1.discountPaise, 15980);
     assert.equal(order1.amountPaise, 143820);
     assert.equal(/^ORD-\d{6}-08-\d{4}$/.test(order1.orderId), true);
     assert.equal(/^INV-KC-2026-\d{4}$/.test(order1.invoiceNumber), true);
+
+    // Promo code single-use & first-order-only enforcement:
+    // Ananya cannot use FIRST10 a second time on her account!
+    const repeatFirst10 = createServerOrder({
+      customer: {
+        name: 'Ananya Verma',
+        email: 'ananya.verma@example.com',
+        phone: '9829012345',
+        address: '42 MI Road, C-Scheme, Jaipur, Rajasthan, PIN: 302001',
+      },
+      items: [{ id: 1, qty: 1, size: 'M' }],
+      couponCode: 'FIRST10',
+    });
+    assert.equal(repeatFirst10.success, false);
+
+    // Password-protected Account Security (Zero Hijacking):
+    // 1. Stranger cannot log into Priya Sharma's account with wrong password
+    const wrongLogin = authenticateOrRegisterAccount({
+      mode: 'login',
+      email: 'priya.sharma@gmail.com',
+      password: 'WrongPassword123',
+    });
+    assert.equal(wrongLogin.success, false);
+
+    // 2. Stranger cannot overwrite/re-register Priya Sharma's account
+    const hijackRegister = authenticateOrRegisterAccount({
+      mode: 'register',
+      email: 'priya.sharma@gmail.com',
+      password: 'NewPassword123',
+      name: 'Hacker',
+      phone: '9876543210',
+    });
+    assert.equal(hijackRegister.success, false);
+
+    // 3. Stranger cannot claim Ananya's order email with a different phone number
+    const wrongPhoneClaim = authenticateOrRegisterAccount({
+      mode: 'register',
+      email: 'ananya.verma@example.com',
+      password: 'AnanyaPass123',
+      name: 'Ananya Verma',
+      phone: '9111122222',
+    });
+    assert.equal(wrongPhoneClaim.success, false);
+
+    // 4. Ananya can register her account by providing her matching order phone number (9829012345)
+    const validClaim = authenticateOrRegisterAccount({
+      mode: 'register',
+      email: 'ananya.verma@example.com',
+      password: 'AnanyaPass123',
+      name: 'Ananya Verma',
+      phone: '9829012345',
+    });
+    assert.equal(validClaim.success, true);
+    if (validClaim.success) {
+      assert.equal(
+        verifyAccountSessionToken(validClaim.sessionToken, 'ananya.verma@example.com').valid,
+        true
+      );
+    }
 
     const explained = explainReferenceCodes(
       order1.orderId,

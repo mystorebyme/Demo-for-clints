@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="600" height="600" role="img" aria-label="Anarkali Printed Kurti">
+  <defs>
+    <linearGradient id="bg-kurti2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fdf4ff"/>
+      <stop offset="100%" stop-color="#fae8ff"/>
+    </linearGradient>
+  </defs>
+  <rect width="600" height="600" fill="url(#bg-kurti2)"/>
+  <circle cx="300" cy="285" r="210" fill="#ffffff" opacity="0.65"/>
+  <!-- Demo Merchandise Transparency Badge -->
+  <rect x="24" y="24" width="180" height="32" rx="16" fill="#1f2937" opacity="0.82"/>
+  <text x="114" y="45" text-anchor="middle" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#ffffff" letter-spacing="0.8">DEMO CATALOG ITEM</text>
+  
+  
+      <g >
+        <path d="M260 105 Q300 78 340 105" fill="none" stroke="#9ca3af" stroke-width="5" stroke-linecap="round"/>
+        <!-- Flared Anarkali Silhouette -->
+        <path d="M240 118 L268 108 Q300 128 332 108 L360 118 L410 205 L380 222 L352 168 L345 235 L418 450 Q300 475 182 450 L255 235 L248 168 L220 222 L190 205 Z"
+              fill="#86198f" stroke="#c026d3" stroke-width="3"/>
+        <!-- Waist Belt & Kali Lines -->
+        <rect x="253" y="228" width="94" height="12" rx="4" fill="#f59e0b"/>
+        <line x1="275" y1="240" x2="230" y2="448" stroke="#f59e0b" stroke-width="1.5" opacity="0.6"/>
+        <line x1="300" y1="240" x2="300" y2="458" stroke="#f59e0b" stroke-width="1.5" opacity="0.6"/>
+        <line x1="325" y1="240" x2="370" y2="448" stroke="#f59e0b" stroke-width="1.5" opacity="0.6"/>
+        <!-- Festive Hem Border -->
+        <path d="M185 432 Q300 457 415 432 L418 450 Q300 475 182 450 Z" fill="#f59e0b" opacity="0.9"/>
+      </g>
+    
+  <!-- Bottom Caption Card -->
+  <rect x="40" y="492" width="520" height="80" rx="16" fill="#ffffff" opacity="0.92"/>
+  <text x="300" y="526" text-anchor="middle" font-family="system-ui, sans-serif" font-size="20" font-weight="700" fill="#111827">Anarkali Printed Kurti</text>
+  <text x="300" y="553" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" font-weight="500" fill="#6b7280">Festive Flared Silhouette • Foil Print</text>
+</svg>

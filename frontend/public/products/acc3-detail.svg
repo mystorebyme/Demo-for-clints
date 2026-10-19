@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="600" height="600" role="img" aria-label="Kundan & Meenakari Bangles Set (6 pcs)">
+  <defs>
+    <linearGradient id="bg-acc3" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fffbeb"/>
+      <stop offset="100%" stop-color="#fde68a"/>
+    </linearGradient>
+  </defs>
+  <rect width="600" height="600" fill="url(#bg-acc3)"/>
+  <circle cx="300" cy="285" r="210" fill="#ffffff" opacity="0.65"/>
+  <!-- Demo Merchandise Transparency Badge -->
+  <rect x="24" y="24" width="180" height="32" rx="16" fill="#1f2937" opacity="0.82"/>
+  <text x="114" y="45" text-anchor="middle" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#ffffff" letter-spacing="0.8">DEMO CATALOG ITEM</text>
+  <rect x="440" y="24" width="136" height="32" rx="16" fill="#b45309" opacity="0.9"/><text x="508" y="45" text-anchor="middle" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#ffffff">FABRIC DETAIL</text>
+  
+    <g transform="scale(1.18) translate(-45, -45)">
+      <circle cx="275" cy="275" r="82" fill="none" stroke="#b45309" stroke-width="18"/>
+      <circle cx="275" cy="275" r="82" fill="none" stroke="#be185d" stroke-width="6" stroke-dasharray="8 8"/>
+      <circle cx="330" cy="295" r="82" fill="none" stroke="#be185d" stroke-width="18"/>
+      <circle cx="330" cy="295" r="82" fill="none" stroke="#b45309" stroke-width="6" stroke-dasharray="10 6"/>
+    </g>
+  
+  <!-- Bottom Caption Card -->
+  <rect x="40" y="492" width="520" height="80" rx="16" fill="#ffffff" opacity="0.92"/>
+  <text x="300" y="526" text-anchor="middle" font-family="system-ui, sans-serif" font-size="20" font-weight="700" fill="#111827">Kundan & Meenakari Bangles Set (6 pcs)</text>
+  <text x="300" y="553" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" font-weight="500" fill="#6b7280">Handcrafted Festive Chooda Stack</text>
+</svg>

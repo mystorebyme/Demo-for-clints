@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="600" height="600" role="img" aria-label="Cotton Straight Kurti">
+  <defs>
+    <linearGradient id="bg-kurti1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fff1f2"/>
+      <stop offset="100%" stop-color="#ffe4e6"/>
+    </linearGradient>
+  </defs>
+  <rect width="600" height="600" fill="url(#bg-kurti1)"/>
+  <circle cx="300" cy="285" r="210" fill="#ffffff" opacity="0.65"/>
+  <!-- Demo Merchandise Transparency Badge -->
+  <rect x="24" y="24" width="180" height="32" rx="16" fill="#1f2937" opacity="0.82"/>
+  <text x="114" y="45" text-anchor="middle" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#ffffff" letter-spacing="0.8">DEMO CATALOG ITEM</text>
+  <rect x="440" y="24" width="136" height="32" rx="16" fill="#be185d" opacity="0.9"/><text x="508" y="45" text-anchor="middle" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#ffffff">FABRIC DETAIL</text>
+  
+      <g transform="scale(1.18) translate(-45, -45)">
+        <!-- Hanger -->
+        <path d="M260 110 Q300 80 340 110" fill="none" stroke="#9ca3af" stroke-width="5" stroke-linecap="round"/>
+        <path d="M300 65 Q315 65 312 80 Q310 90 300 92" fill="none" stroke="#9ca3af" stroke-width="4" stroke-linecap="round"/>
+        <!-- Straight Kurti Silhouette -->
+        <path d="M235 120 L265 110 Q300 130 335 110 L365 120 L415 215 L382 232 L355 170 L362 455 L238 455 L245 170 L218 232 L185 215 Z"
+              fill="#be185d" stroke="#f43f5e" stroke-width="3"/>
+        <!-- Neckline & Yoke Embroidery -->
+        <path d="M275 115 Q300 155 325 115" fill="none" stroke="#fbbf24" stroke-width="4"/>
+        <rect x="282" y="135" width="36" height="85" rx="6" fill="#f43f5e" stroke="#fbbf24" stroke-width="2" stroke-dasharray="4 2"/>
+        <circle cx="300" cy="155" r="4" fill="#fbbf24"/>
+        <circle cx="300" cy="175" r="4" fill="#fbbf24"/>
+        <circle cx="300" cy="195" r="4" fill="#fbbf24"/>
+        <!-- Ethnic Motifs -->
+        <circle cx="268" cy="270" r="8" fill="#fbbf24" opacity="0.75"/>
+        <circle cx="332" cy="270" r="8" fill="#fbbf24" opacity="0.75"/>
+        <circle cx="300" cy="320" r="8" fill="#fbbf24" opacity="0.75"/>
+        <circle cx="265" cy="370" r="8" fill="#fbbf24" opacity="0.75"/>
+        <circle cx="335" cy="370" r="8" fill="#fbbf24" opacity="0.75"/>
+        <!-- Zari Hem Border -->
+        <rect x="238" y="425" width="124" height="18" fill="#fbbf24" opacity="0.88"/>
+        <line x1="238" y1="420" x2="362" y2="420" stroke="#fbbf24" stroke-width="2" stroke-dasharray="5 3"/>
+      </g>
+    
+  <!-- Bottom Caption Card -->
+  <rect x="40" y="492" width="520" height="80" rx="16" fill="#ffffff" opacity="0.92"/>
+  <text x="300" y="526" text-anchor="middle" font-family="system-ui, sans-serif" font-size="20" font-weight="700" fill="#111827">Cotton Straight Kurti</text>
+  <text x="300" y="553" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" font-weight="500" fill="#6b7280">Jaipuri Floral Block Print • Pure Cotton</text>
+</svg>

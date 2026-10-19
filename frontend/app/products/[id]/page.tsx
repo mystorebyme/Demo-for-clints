@@ -6,7 +6,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Header from '../../../components/Header';
 import Footer from '../../../components/Footer';
 import ProductCard from '../../../components/ProductCard';
-import { DEMO_PRODUCTS, getProductById, Product } from '../../../lib/catalog';
+import { DEMO_PRODUCTS, getProductById, getProductPriceForSize, Product } from '../../../lib/catalog';
 import {
   buildWhatsAppOrderUrl,
   buildWhatsAppShareUrl,
@@ -37,7 +37,7 @@ export default function ProductDetailPage() {
   const [reviews, setReviews] = useState<ReviewItem[]>([]);
 
   const [selectedSize, setSelectedSize] = useState<string>(
-    product?.sizes?.[0] || 'Free Size'
+    product?.sizes?.includes('M') ? 'M' : product?.sizes?.[0] || 'Free Size'
   );
   const [activeImage, setActiveImage] = useState<string>(
     product?.image_url || '/products/kurti1.jpg'
@@ -68,7 +68,9 @@ export default function ProductDetailPage() {
       .then((d) => {
         if (d.product) {
           setProduct(d.product);
-          setSelectedSize(d.product.sizes?.[0] || 'Free Size');
+          setSelectedSize(
+            d.product.sizes?.includes('M') ? 'M' : d.product.sizes?.[0] || 'Free Size'
+          );
           setActiveImage(d.product.image_url);
         }
         if (Array.isArray(d.reviews)) {
@@ -111,6 +113,11 @@ export default function ProductDetailPage() {
   const isOutOfStock = product.stock <= 0;
   const isWishlisted = wishlist.includes(product.id);
 
+  // Size-based dynamic price calculation
+  const sizeQuote = getProductPriceForSize(product, selectedSize);
+  const activePricePaise = sizeQuote.price_paise;
+  const activeOriginalPaise = sizeQuote.original_price_paise;
+
   const related = allProducts
     .filter((item) => item.category === product.category && item.id !== product.id)
     .slice(0, 3);
@@ -121,9 +128,9 @@ export default function ProductDetailPage() {
       id: product.id,
       name: product.name,
       name_hi: product.name_hi,
-      price_paise: product.price_paise,
+      price_paise: activePricePaise,
       qty,
-      size: selectedSize,
+      size: sizeQuote.size,
       image_url: product.image_url,
       category: product.category,
     });
@@ -137,9 +144,9 @@ export default function ProductDetailPage() {
       id: product.id,
       name: product.name,
       name_hi: product.name_hi,
-      price_paise: product.price_paise,
+      price_paise: activePricePaise,
       qty,
-      size: selectedSize,
+      size: sizeQuote.size,
       image_url: product.image_url,
       category: product.category,
     });
@@ -296,15 +303,18 @@ export default function ProductDetailPage() {
                 {displayName}
               </h1>
 
-              <div className="flex items-baseline gap-3 mb-3">
+              <div className="flex items-baseline gap-3 mb-3 flex-wrap">
                 <span className="text-3xl font-extrabold text-rose-900">
-                  {rupees(product.price_paise)}
+                  {rupees(activePricePaise)}
                 </span>
-                {product.original_price_paise && (
+                {activeOriginalPaise && (
                   <span className="text-base text-stone-400 line-through">
-                    {t('mrpLabel')}: {rupees(product.original_price_paise)}
+                    {t('mrpLabel')}: {rupees(activeOriginalPaise)}
                   </span>
                 )}
+                <span className="text-xs font-mono font-bold text-stone-800 bg-stone-100 px-2 py-0.5 rounded border border-stone-200">
+                  Size: {selectedSize}
+                </span>
                 <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">
                   Incl. of 5% GST (HSN {product.category === 'kurti' ? '6204' : product.category === 'bag' ? '4202' : '7117'})
                 </span>
@@ -338,20 +348,26 @@ export default function ProductDetailPage() {
                   )}
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {product.sizes.map((size) => (
-                    <button
-                      key={size}
-                      type="button"
-                      onClick={() => setSelectedSize(size)}
-                      className={`px-4 py-2 rounded-xl text-sm font-semibold border transition-colors ${
-                        selectedSize === size
-                          ? 'bg-rose-800 text-white border-rose-800'
-                          : 'bg-white text-stone-700 border-stone-300 hover:border-rose-400'
-                      }`}
-                    >
-                      {size}
-                    </button>
-                  ))}
+                  {product.sizes.map((size) => {
+                    const szPrice = getProductPriceForSize(product, size).price_paise;
+                    return (
+                      <button
+                        key={size}
+                        type="button"
+                        onClick={() => setSelectedSize(size)}
+                        className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold border transition-colors flex flex-col items-center min-w-[68px] ${
+                          selectedSize === size
+                            ? 'bg-stone-950 text-amber-300 border-stone-950 shadow-xs'
+                            : 'bg-white text-stone-700 border-stone-300 hover:border-stone-900'
+                        }`}
+                      >
+                        <span className="font-bold">{size}</span>
+                        <span className={`text-[10px] font-mono ${selectedSize === size ? 'text-amber-200' : 'text-stone-500'}`}>
+                          {rupees(szPrice)}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 

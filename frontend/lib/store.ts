@@ -22,6 +22,7 @@ export type CustomerProfile = {
   pincode: string;
   cityState: string;
   address: string;
+  emailVerified?: boolean;
   connectedAt?: string | null;
 };
 
@@ -45,6 +46,7 @@ const DEFAULT_PROFILE: CustomerProfile = {
   pincode: '',
   cityState: 'Jaipur, Rajasthan',
   address: '',
+  emailVerified: false,
 };
 
 function loadInitialCart(): CartItem[] {
@@ -116,6 +118,8 @@ function loadInitialProfile(): CustomerProfile {
           ? parsed.cityState
           : 'Jaipur, Rajasthan',
       address: typeof parsed?.address === 'string' ? parsed.address : '',
+      emailVerified: Boolean(parsed?.emailVerified),
+      connectedAt: typeof parsed?.connectedAt === 'string' ? parsed.connectedAt : null,
     };
   } catch {
     return DEFAULT_PROFILE;

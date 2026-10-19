@@ -1,7 +1,9 @@
+const fs = require('fs');
+const path = require('path');
 const { Pool } = require('pg');
 const env = require('./env');
 
-const INITIAL_PRODUCTS = [
+const CORE_INITIAL_PRODUCTS = [
   { id: 1, name: 'Cotton Straight Kurti', name_hi: 'कॉटन स्ट्रेट कुर्ती', category: 'kurti', price_paise: 79900, image_url: '/products/kurti1.svg', stock: 50 },
   { id: 2, name: 'Anarkali Printed Kurti', name_hi: 'अनारकली प्रिंटेड कुर्ती', category: 'kurti', price_paise: 129900, image_url: '/products/kurti2.svg', stock: 40 },
   { id: 3, name: 'Chikankari Kurti', name_hi: 'चिकनकारी कुर्ती', category: 'kurti', price_paise: 189900, image_url: '/products/kurti3.svg', stock: 7 },
@@ -15,6 +17,38 @@ const INITIAL_PRODUCTS = [
   { id: 11, name: 'Handcrafted Jute & Ikat Shoulder Bag', name_hi: 'हैंडक्राफ्टेड जूट और इकत शोल्डर बैग', category: 'bag', price_paise: 84900, image_url: '/products/bag4.svg', stock: 18 },
   { id: 12, name: 'Pearl & Mirror Work Hair Clip Set', name_hi: 'पर्ल और मिरर वर्क हेयर क्लिप सेट', category: 'accessory', price_paise: 24900, image_url: '/products/acc4.svg', stock: 0 },
 ];
+
+function loadSeededProducts() {
+  try {
+    const seedPath = path.resolve(__dirname, '../../database/catalog_seed.json');
+    if (fs.existsSync(seedPath)) {
+      const parsed = JSON.parse(fs.readFileSync(seedPath, 'utf8'));
+      if (Array.isArray(parsed) && parsed.length > 12) {
+        const coreIds = new Set(CORE_INITIAL_PRODUCTS.map((p) => p.id));
+        const extra = parsed
+          .filter((p) => !coreIds.has(Number(p.id)))
+          .map((p) => ({
+            id: Number(p.id),
+            sku: p.sku,
+            name: p.name,
+            name_hi: p.name_hi,
+            category: p.category,
+            price_paise: Number(p.price_paise),
+            size_prices_paise: p.size_prices_paise || {},
+            sizes: p.sizes || ['Free Size'],
+            image_url: p.image_url,
+            stock: Number(p.stock ?? 20),
+          }));
+        return [...CORE_INITIAL_PRODUCTS, ...extra];
+      }
+    }
+  } catch {
+    // fallback
+  }
+  return CORE_INITIAL_PRODUCTS;
+}
+
+const INITIAL_PRODUCTS = loadSeededProducts();
 
 const DEMO_TRACKED_ORDER = {
   id: 1,

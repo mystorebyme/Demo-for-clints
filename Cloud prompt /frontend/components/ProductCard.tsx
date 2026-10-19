@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { Product } from '../lib/catalog';
+import { getProductPriceForSize, Product } from '../lib/catalog';
 import { buildWhatsAppShareUrl, rupees, useStore } from '../lib/store';
 
 export default function ProductCard({
@@ -12,7 +12,8 @@ export default function ProductCard({
 }) {
   const { lang, addToCart, wishlist, toggleWishlist, t } = useStore();
   const [justAdded, setJustAdded] = useState(false);
-  const [selectedSize, setSelectedSize] = useState(p.sizes?.[0] || 'Free Size');
+  const defaultSize = p.sizes?.includes('M') ? 'M' : p.sizes?.[0] || 'Free Size';
+  const [selectedSize, setSelectedSize] = useState(defaultSize);
 
   const displayName = lang === 'hi' && p.name_hi ? p.name_hi : p.name;
   const displayDesc = lang === 'hi' && p.description_hi ? p.description_hi : p.description;
@@ -22,9 +23,14 @@ export default function ProductCard({
   const isLowStock = p.stock > 0 && p.stock <= 5;
   const isWishlisted = wishlist.includes(p.id);
 
+  // Dynamically compute price & MRP based on selected size
+  const activeQuote = getProductPriceForSize(p, selectedSize);
+  const activePricePaise = activeQuote.price_paise;
+  const activeOriginalPaise = activeQuote.original_price_paise;
+
   const discountPct =
-    p.original_price_paise && p.original_price_paise > p.price_paise
-      ? Math.round(((p.original_price_paise - p.price_paise) / p.original_price_paise) * 100)
+    activeOriginalPaise && activeOriginalPaise > activePricePaise
+      ? Math.round(((activeOriginalPaise - activePricePaise) / activeOriginalPaise) * 100)
       : 0;
 
   const handleQuickAdd = () => {
@@ -33,9 +39,9 @@ export default function ProductCard({
       id: p.id,
       name: p.name,
       name_hi: p.name_hi,
-      price_paise: p.price_paise,
+      price_paise: activePricePaise,
       qty: 1,
-      size: selectedSize || p.sizes?.[0] || 'Free Size',
+      size: activeQuote.size,
       image_url: p.image_url,
       category: p.category,
     });
@@ -151,23 +157,27 @@ export default function ProductCard({
             {displayDesc}
           </p>
 
-          {/* Quick Size Selector Pills */}
+          {/* Quick Size Selector Pills with Size-Dynamic Pricing */}
           {p.sizes && p.sizes.length > 1 && (
             <div className="flex flex-wrap items-center gap-1 mt-1.5 sm:mt-2.5">
-              {p.sizes.map((sz) => (
-                <button
-                  key={sz}
-                  type="button"
-                  onClick={() => setSelectedSize(sz)}
-                  className={`px-1.5 sm:px-2 py-0.5 rounded text-[9px] sm:text-[10px] font-bold border transition ${
-                    selectedSize === sz
-                      ? 'bg-stone-900 text-white border-stone-900'
-                      : 'bg-stone-50 text-stone-600 border-stone-200 hover:border-stone-400'
-                  }`}
-                >
-                  {sz}
-                </button>
-              ))}
+              {p.sizes.map((sz) => {
+                const szPrice = getProductPriceForSize(p, sz).price_paise;
+                return (
+                  <button
+                    key={sz}
+                    type="button"
+                    onClick={() => setSelectedSize(sz)}
+                    title={`${sz}: ${rupees(szPrice)}`}
+                    className={`px-1.5 sm:px-2 py-0.5 rounded text-[9px] sm:text-[10px] font-bold border transition ${
+                      selectedSize === sz
+                        ? 'bg-stone-900 text-white border-stone-900'
+                        : 'bg-stone-50 text-stone-600 border-stone-200 hover:border-stone-400'
+                    }`}
+                  >
+                    {sz}
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
@@ -176,11 +186,16 @@ export default function ProductCard({
           <div className="flex items-baseline justify-between mb-2 sm:mb-3">
             <div className="flex items-baseline gap-1.5 flex-wrap">
               <span className="text-sm sm:text-xl font-extrabold text-stone-900">
-                {rupees(p.price_paise)}
+                {rupees(activePricePaise)}
               </span>
-              {p.original_price_paise && p.original_price_paise > p.price_paise && (
+              {activeOriginalPaise && activeOriginalPaise > activePricePaise && (
                 <span className="text-[10px] sm:text-xs text-stone-400 line-through">
-                  {rupees(p.original_price_paise)}
+                  {rupees(activeOriginalPaise)}
+                </span>
+              )}
+              {p.sizes && p.sizes.length > 1 && (
+                <span className="text-[9px] sm:text-[10px] font-mono font-semibold text-amber-900 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                  {selectedSize}
                 </span>
               )}
             </div>

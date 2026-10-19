@@ -1,14 +1,15 @@
 export type ProductCategory = 'kurti' | 'bag' | 'accessory';
 
-export type SortOption = 'featured' | 'price-asc' | 'price-desc' | 'rating' | 'newest' | 'name-asc';
-
 export type Product = {
   id: number;
+  sku?: string;
   name: string;
   name_hi: string;
   category: ProductCategory;
   price_paise: number;
   original_price_paise?: number;
+  size_prices_paise?: Record<string, number>;
+  size_original_prices_paise?: Record<string, number>;
   image_url: string;
   hover_image_url?: string;
   gallery?: string[];
@@ -16,467 +17,794 @@ export type Product = {
   sizes: string[];
   description: string;
   description_hi: string;
+  fabric_or_material?: string;
+  care_instructions?: string;
+  origin_cluster?: string;
   rating: number;
   reviews_count: number;
   badge?: string;
   badge_hi?: string;
   featured?: boolean;
-  is_demo: boolean;
-  created_at?: string;
+  is_demo?: boolean;
 };
 
-export const DEMO_PRODUCTS: Product[] = [
+/**
+ * Computes the authoritative price & MRP for a specific size of a product.
+ * Ensures size-based price changes are consistent across ProductCard, Product Detail, Cart, and Server Checkout.
+ */
+export function getProductPriceForSize(
+  product: Pick<
+    Product,
+    | 'category'
+    | 'price_paise'
+    | 'original_price_paise'
+    | 'sizes'
+    | 'size_prices_paise'
+    | 'size_original_prices_paise'
+  >,
+  rawSize?: string | null
+): { price_paise: number; original_price_paise: number; size: string } {
+  const defaultSize = product.sizes?.[0] || 'Free Size';
+  const size = rawSize && product.sizes?.includes(rawSize) ? rawSize : defaultSize;
+
+  if (product.size_prices_paise && typeof product.size_prices_paise[size] === 'number') {
+    const p = product.size_prices_paise[size];
+    const orig =
+      product.size_original_prices_paise?.[size] ??
+      Math.round(p * ((product.original_price_paise || p * 1.35) / Math.max(100, product.price_paise)));
+    return { price_paise: p, original_price_paise: orig, size };
+  }
+
+  // Deterministic size-tier price schedule so every size has its own distinct price
+  const sizeOffsetsPaise: Record<string, number> = {
+    XS: -6000,
+    S: -4000,
+    M: 0,
+    L: 6000,
+    XL: 12000,
+    XXL: 18000,
+    '3XL': 24000,
+    'Free Size': 0,
+    Standard: 0,
+    Compact: 0,
+    Regular: 10000,
+    'Large Bridal': 22000,
+    '2.25m': 0,
+    '2.50m': 14000,
+    'Single Piece': 0,
+    'Bridal Pair': 18000,
+  };
+
+  const delta = sizeOffsetsPaise[size] ?? 0;
+  const price_paise = Math.max(9900, product.price_paise + delta);
+  const baseOrig = product.original_price_paise || Math.round(product.price_paise * 1.35);
+  const original_price_paise = Math.max(price_paise, baseOrig + delta);
+
+  return { price_paise, original_price_paise, size };
+}
+
+function attachSizePriceMaps(p: Product): Product {
+  const size_prices_paise: Record<string, number> = {};
+  const size_original_prices_paise: Record<string, number> = {};
+  for (const sz of p.sizes) {
+    const computed = getProductPriceForSize(p, sz);
+    size_prices_paise[sz] = computed.price_paise;
+    size_original_prices_paise[sz] = computed.original_price_paise;
+  }
+  return {
+    ...p,
+    sku:
+      p.sku ||
+      `ZJ-${p.category === 'kurti' ? 'KRT' : p.category === 'bag' ? 'BAG' : 'JWL'}-${String(
+        p.id
+      ).padStart(3, '0')}`,
+    size_prices_paise,
+    size_original_prices_paise,
+  };
+}
+
+const CORE_FLAGSHIP_PRODUCTS: Product[] = [
+  // ─── KURTIS (6 Flagship Styles) ───
   {
     id: 1,
-    name: 'Sanganeri Mulmul Cotton Straight Kurti',
-    name_hi: 'सांगानेरी मलमल कॉटन स्ट्रेट कुर्ती',
+    sku: 'ZJ-KRT-001',
+    name: 'Sanganeri Mulmul Hand-Block Anarkali Kurta',
+    name_hi: 'सांगानेरी मलमल हैंड-ब्लॉक अनारकली कुर्ता',
     category: 'kurti',
     price_paise: 79900,
     original_price_paise: 129900,
     image_url: '/products/kurti1.jpg',
     hover_image_url: '/products/kurti1-detail.jpg',
-    gallery: ['/products/kurti1.jpg', '/products/kurti1-detail.jpg', '/products/kurti1.svg'],
+    gallery: ['/products/kurti1.jpg', '/products/kurti1-detail.jpg'],
     stock: 50,
-    sizes: ['S', 'M', 'L', 'XL'],
+    sizes: ['S', 'M', 'L', 'XL', 'XXL'],
     description:
-      'Hand-block printed Sanganeri 60x60 cambric cotton straight kurti accented with artisanal gota-patti neckline detailing and mother-of-pearl buttons.',
+      'Hand-block printed in Sanganer on breathable 100% pure mulmul cotton. Features a 16-kali gathered flare, delicate gota-patti neckline piping, and natural vegetable dye floral motifs.',
     description_hi:
-      'असली सांगानेरी हैंड-ब्लॉक प्रिंट और बारीक गोटा-पट्टी नेकलाइन वर्क वाली 100% शुद्ध कैम्ब्रिक कॉटन स्ट्रेट कुर्ती।',
-    rating: 4.9,
-    reviews_count: 184,
-    badge: 'Signature Bestseller',
-    badge_hi: 'सिग्नेचर बेस्टसेलर',
+      'सांगानेर के पारंपरिक कारीगरों द्वारा 100% शुद्ध मलमल कॉटन पर हैंड-ब्लॉक प्रिंटेड 16-कली अनारकली कुर्ता। गले पर बारीक गोटा-पट्टी कार्य।',
+    fabric_or_material: '100% Pure Sanganeri Mulmul Cotton',
+    care_instructions: 'Gentle cold hand wash separately with mild detergent',
+    origin_cluster: 'Sanganer, Jaipur (Rajasthan)',
+    rating: 4.8,
+    reviews_count: 142,
+    badge: 'Bestseller',
+    badge_hi: 'सबसे ज़्यादा बिकने वाला',
     featured: true,
     is_demo: true,
   },
   {
     id: 2,
-    name: 'Maharani Zardozi Festive Anarkali Kurti',
-    name_hi: 'महारानी ज़रदोज़ी फेस्टिव अनारकली कुर्ती',
+    sku: 'ZJ-KRT-002',
+    name: 'Maharani Royal Chanderi Zardozi Festive Kurta Set',
+    name_hi: 'महारानी रॉयल चंदेरी ज़रदोज़ी फेस्टिव कुर्ता सेट',
     category: 'kurti',
     price_paise: 129900,
     original_price_paise: 199900,
     image_url: '/products/kurti2.jpg',
     hover_image_url: '/products/kurti2-detail.jpg',
-    gallery: ['/products/kurti2.jpg', '/products/kurti2-detail.jpg', '/products/kurti2.svg'],
-    stock: 35,
-    sizes: ['M', 'L', 'XL'],
+    gallery: ['/products/kurti2.jpg', '/products/kurti2-detail.jpg'],
+    stock: 30,
+    sizes: ['S', 'M', 'L', 'XL', 'XXL'],
     description:
-      '16-panel flared royal Chanderi silk-blend Anarkali kurti featuring antique golden zari yoke embroidery and woven brocade borders.',
+      'Woven Chanderi silk-cotton blend in auspicious sindoor crimson and gold, adorned with hand-stitched dabka zardozi embroidery on the yoke and cuffs.',
     description_hi:
-      '16-कली घेरदार रॉयल चंदेरी सिल्क अनारकली कुर्ती, एंटीक गोल्डन ज़री कढ़ाई और ब्रोकेड बॉर्डर के साथ।',
+      'शुभ सिंदूरी लाल और सुनहरे चंदेरी सिल्क-कॉटन में हाथ की दबका ज़रदोज़ी कढ़ाई से सजा शाही फेस्टिव कुर्ता सेट।',
+    fabric_or_material: 'Chanderi Silk-Cotton with Zardozi Work',
+    care_instructions: 'Dry clean only',
+    origin_cluster: 'Johari Bazar Atelier, Jaipur',
     rating: 4.9,
-    reviews_count: 146,
-    badge: 'Royal Couture',
-    badge_hi: 'रॉयल कलेक्शन',
+    reviews_count: 98,
+    badge: 'Bridal Edit',
+    badge_hi: 'फेस्टिव स्पेशल',
     featured: true,
     is_demo: true,
   },
   {
     id: 3,
-    name: 'Awadhi Pastel Chikankari Kurti',
-    name_hi: 'अवधी पेस्टल चिकनकारी कुर्ती',
+    sku: 'ZJ-KRT-003',
+    name: 'Awadhi Pastel Georgette Hand-Chikankari Straight Kurta',
+    name_hi: 'अवधी पेस्टल जॉर्जेट हैंड-चिकनकारी स्ट्रेट कुर्ता',
     category: 'kurti',
     price_paise: 99900,
-    original_price_paise: 159900,
+    original_price_paise: 149900,
     image_url: '/products/kurti3.jpg',
     hover_image_url: '/products/kurti3-detail.jpg',
-    gallery: ['/products/kurti3.jpg', '/products/kurti3-detail.jpg', '/products/kurti3.svg'],
-    stock: 25,
-    sizes: ['S', 'M', 'L'],
+    gallery: ['/products/kurti3.jpg', '/products/kurti3-detail.jpg'],
+    stock: 40,
+    sizes: ['S', 'M', 'L', 'XL'],
     description:
-      'Authentic Lucknowi hand-embroidered resham Chikankari kurta on feather-soft pastel modal mulmul with bakhiya and phanda stitches.',
+      'Authentic Lucknowi Tepchi, Bakhiya, and Phanda hand-embroidery on whisper-soft pastel rose georgette, paired with a matching pure cotton inner slip.',
     description_hi:
-      'असली लखनवी रेशम हैंड-एम्ब्रॉयडरी पेस्टल चिकनकारी कुर्ती, बखिया और फंदा टांकों की नज़ाकत के साथ।',
-    rating: 4.8,
-    reviews_count: 112,
-    badge: 'Hand-Embroidered',
-    badge_hi: 'हस्त-कढ़ाई',
+      'सॉफ्ट पेस्टल जॉर्जेट पर असली लखनवी बखिया और फंदा हैंड-चिकनकारी कढ़ाई, मैचिंग कॉटन इनर स्लिप के साथ।',
+    fabric_or_material: 'Pure Viscose Georgette with Cotton Slip',
+    care_instructions: 'Gentle hand wash',
+    origin_cluster: 'Chowk, Lucknow & Jaipur Guild',
+    rating: 4.7,
+    reviews_count: 76,
+    badge: 'Artisan Pick',
+    badge_hi: 'कारीगर विशेष',
     featured: true,
     is_demo: true,
   },
   {
     id: 4,
-    name: 'Banarasi Katan Royal Silk Blend Kurti',
-    name_hi: 'बनारसी कतान रॉयल सिल्क ब्लेंड कुर्ती',
+    sku: 'ZJ-KRT-004',
+    name: 'Bagru Natural Indigo Handloom Straight Kurta',
+    name_hi: 'बगरू नेचुरल इंडिगो हैंडलूम स्ट्रेट कुर्ता',
     category: 'kurti',
-    price_paise: 159900,
-    original_price_paise: 249900,
+    price_paise: 84900,
+    original_price_paise: 124900,
     image_url: '/products/kurti4.jpg',
     hover_image_url: '/products/kurti4-detail.jpg',
-    gallery: ['/products/kurti4.jpg', '/products/kurti4-detail.jpg', '/products/kurti4.svg'],
-    stock: 4,
-    sizes: ['M', 'L', 'XL', 'XXL'],
+    gallery: ['/products/kurti4.jpg', '/products/kurti4-detail.jpg'],
+    stock: 25,
+    sizes: ['S', 'M', 'L', 'XL', 'XXL'],
     description:
-      'Heirloom-grade Varanasi Katan silk-blend straight kurta woven with kadwa gold zari floral motifs and pure silk lining.',
+      'Traditional Dabu mud-resist block print dyed in deep natural indigo vats in Bagru village. Tailored in a crisp straight silhouette with side slits and pockets.',
     description_hi:
-      'कड़वा गोल्डन ज़री बूटी और शुद्ध सिल्क लाइनिंग के साथ बुनी गई शाही बनारसी कतान रॉयल सिल्क ब्लेंड कुर्ती।',
-    rating: 5.0,
-    reviews_count: 78,
-    badge: 'Limited Edition',
-    badge_hi: 'सीमित संस्करण',
+      'बगरू के पारंपरिक दाबू मड-रेज़िस्ट तकनीक और प्राकृतिक नील (इंडिगो) में रंगा आरामदायक हैंडलूम कुर्ता।',
+    fabric_or_material: '100% Slub Handloom Cotton',
+    care_instructions: 'Wash separately in cold water',
+    origin_cluster: 'Bagru Village, Rajasthan',
+    rating: 4.6,
+    reviews_count: 54,
+    featured: false,
+    is_demo: true,
+  },
+  {
+    id: 13,
+    sku: 'ZJ-KRT-013',
+    name: 'Mewar Emerald Silk Bandhani Gota-Patti Kurta Set',
+    name_hi: 'मेवाड़ पन्ना सिल्क बंधेज गोटा-पट्टी कुर्ता सेट',
+    category: 'kurti',
+    price_paise: 149900,
+    original_price_paise: 219900,
+    image_url: '/products/kurti2-detail.jpg',
+    hover_image_url: '/products/kurti2.jpg',
+    gallery: ['/products/kurti2-detail.jpg', '/products/kurti2.jpg'],
+    stock: 22,
+    sizes: ['S', 'M', 'L', 'XL', 'XXL'],
+    description:
+      'Hand-tied Sikar Bandhani on lustrous Gajji modal silk with Sikar gota-patti border work along the sleeves and hemline.',
+    description_hi:
+      'चमकदार गज्जी मोडल सिल्क पर सीकर का पारंपरिक हाथ से बंधा बंधेज और गोटा-पट्टी बॉर्डर वर्क।',
+    fabric_or_material: 'Gajji Modal Silk with Gota-Patti',
+    care_instructions: 'Dry clean only',
+    origin_cluster: 'Sikar & Udaipur, Rajasthan',
+    rating: 4.9,
+    reviews_count: 63,
+    badge: 'New Arrival',
+    badge_hi: 'नया कलेक्शन',
     featured: true,
     is_demo: true,
   },
   {
+    id: 14,
+    sku: 'ZJ-KRT-014',
+    name: 'Amer Ivory Angrakha Organza Applique Kurta',
+    name_hi: 'आमेर आइवरी अंगरखा ऑर्गेंज़ा एप्लिक कुर्ता',
+    category: 'kurti',
+    price_paise: 114900,
+    original_price_paise: 169900,
+    image_url: '/products/kurti1-detail.jpg',
+    hover_image_url: '/products/kurti1.jpg',
+    gallery: ['/products/kurti1-detail.jpg', '/products/kurti1.jpg'],
+    stock: 19,
+    sizes: ['S', 'M', 'L', 'XL'],
+    description:
+      'Classic Rajasthani wrap-style Angrakha silhouette in ivory mulmul with handcrafted dori tassels and delicate floral organza applique panels.',
+    description_hi:
+      'राजस्थानी अंगरखा स्टाइल में आइवरी मलमल कुर्ता, हाथ से बनी डोरी लटकन और ऑर्गेंज़ा फ्लोरल पैनल के साथ।',
+    fabric_or_material: 'Ivory Mulmul & Silk Organza',
+    care_instructions: 'Gentle hand wash',
+    origin_cluster: 'Amer Road Atelier, Jaipur',
+    rating: 4.8,
+    reviews_count: 41,
+    badge: 'Atelier Exclusive',
+    badge_hi: 'विशेष डिज़ाइन',
+    featured: false,
+    is_demo: true,
+  },
+
+  // ─── HANDCRAFTED BAGS & POTLIS (5 Flagship Styles) ───
+  {
     id: 5,
-    name: 'Dabu Artisan Handcrafted Tote Bag',
-    name_hi: 'दाबू आर्टिसन हैंडक्राफ्टेड टोट बैग',
+    sku: 'ZJ-BAG-005',
+    name: 'Kutchi Abhla Mirror-Work Embroidered Sling Bag',
+    name_hi: 'कच्छी आभला मिरर-वर्क एम्ब्रॉयडर्ड स्लिंग बैग',
     category: 'bag',
-    price_paise: 59900,
+    price_paise: 64900,
     original_price_paise: 99900,
     image_url: '/products/bag1.jpg',
     hover_image_url: '/products/bag1-detail.jpg',
-    gallery: ['/products/bag1.jpg', '/products/bag1-detail.jpg', '/products/bag1.svg'],
-    stock: 20,
-    sizes: ['Free Size'],
+    gallery: ['/products/bag1.jpg', '/products/bag1-detail.jpg'],
+    stock: 35,
+    sizes: ['Compact', 'Regular', 'Large Bridal'],
     description:
-      'Spacious Kutchi mirror-work and indigo Dabu mud-resist printed artisan tote bag with reinforced vegan leather straps and brass zip.',
+      'Handcrafted by Kutch women artisans with real glass abhla mirrors, vibrant silk threadwork, antique brass magnetic closure, and braided tassel strap.',
     description_hi:
-      'कच्छी मिरर-वर्क और इंडिगो दाबू प्रिंट वाला मज़बूत हैंडक्राफ्टेड टोट बैग, प्रीमियम ज़िप और पॉकेट्स के साथ।',
+      'कच्छ के कारीगरों द्वारा असली कांच के आभला मिरर और रेशमी धागों की कढ़ाई से तैयार आकर्षक स्लिंग बैग।',
+    fabric_or_material: 'Handloom Cotton Canvas & Silk Embroidery',
+    care_instructions: 'Spot clean with dry cloth',
+    origin_cluster: 'Bhuj, Kutch & Jaipur Guild',
     rating: 4.8,
-    reviews_count: 94,
-    badge: 'Artisan Guild',
-    badge_hi: 'दस्तकारी विशेष',
+    reviews_count: 89,
+    badge: 'Handcrafted',
+    badge_hi: 'हस्तनिर्मित',
     featured: true,
     is_demo: true,
   },
   {
     id: 6,
-    name: 'Kalamkari Heritage Crossbody Sling Bag',
-    name_hi: 'कलमकारी हेरिटेज क्रॉसबॉडी स्लिंग बैग',
+    sku: 'ZJ-BAG-006',
+    name: 'Jaipur Block-Print Quilted Cotton Tote Bag',
+    name_hi: 'जयपुर ब्लॉक-प्रिंट क्विल्टेड कॉटन टोट बैग',
     category: 'bag',
-    price_paise: 69900,
-    original_price_paise: 119900,
+    price_paise: 54900,
+    original_price_paise: 89900,
     image_url: '/products/bag2.jpg',
     hover_image_url: '/products/bag2-detail.jpg',
-    gallery: ['/products/bag2.jpg', '/products/bag2-detail.jpg', '/products/bag2.svg'],
-    stock: 30,
-    sizes: ['Free Size'],
+    gallery: ['/products/bag2.jpg', '/products/bag2-detail.jpg'],
+    stock: 20,
+    sizes: ['Regular', 'Large Bridal'],
     description:
-      'Handcrafted peacock-motif embroidery crossbody sling bag featuring antique brass hardware and dual-compartment suede interior.',
+      'Spacious quilted everyday tote in hand-block printed organic cotton canvas. Fits a 14-inch laptop, features a YKK zip top and interior organizer pockets.',
     description_hi:
-      'मोर कढ़ाई और एंटीक ब्रास हार्डवेयर वाला हैंडक्राफ्टेड क्रॉसबॉडी स्लिंग बैग, डबल कम्पार्टमेंट के साथ।',
+      'ऑर्गेनिक कॉटन कैनवास में हैंड-ब्लॉक प्रिंटेड और क्विल्टेड स्पेशियस टोट बैग, ज़िप क्लोज़र और इनर पॉकेट्स के साथ।',
+    fabric_or_material: 'Quilted Heavyweight Block-Print Canvas',
+    care_instructions: 'Gentle cold wash',
+    origin_cluster: 'Sanganer, Jaipur',
     rating: 4.7,
-    reviews_count: 83,
-    badge: 'Trending Edit',
-    badge_hi: 'ट्रेंडिंग',
+    reviews_count: 63,
     featured: false,
     is_demo: true,
   },
   {
+    id: 9,
+    sku: 'ZJ-BAG-009',
+    name: 'Royal Velvet Zardozi Bridal Potli Clutch',
+    name_hi: 'रॉयल वेलवेट ज़रदोज़ी ब्राइडल पोटली क्लच',
+    category: 'bag',
+    price_paise: 74900,
+    original_price_paise: 119900,
+    image_url: '/products/bag3.jpg',
+    hover_image_url: '/products/bag3-detail.jpg',
+    gallery: ['/products/bag3.jpg', '/products/bag3-detail.jpg'],
+    stock: 28,
+    sizes: ['Compact', 'Regular', 'Large Bridal'],
+    description:
+      'Plush maroon micro-velvet bridal potli embellished with metallic gold zardozi motifs and a multi-strand woven freshwater pearl handle.',
+    description_hi:
+      'गहरे मैरून वेलवेट पर सुनहरी ज़रदोज़ी कढ़ाई और मोतियों के हैंडल वाली शाही ब्राइडल पोटली।',
+    fabric_or_material: 'Micro-Velvet with Zardozi & Pearl Handle',
+    care_instructions: 'Store in dust bag provided',
+    origin_cluster: 'Badi Chaupar, Jaipur',
+    rating: 4.9,
+    reviews_count: 112,
+    badge: 'Wedding Favourite',
+    badge_hi: 'वेडिंग स्पेशल',
+    featured: true,
+    is_demo: true,
+  },
+  {
+    id: 10,
+    sku: 'ZJ-BAG-010',
+    name: 'Heritage Jute & Handloom Ikat Structured Handbag',
+    name_hi: 'हेरिटेज जूट और हैंडलूम इकत स्ट्रक्चर्ड हैंडबैग',
+    category: 'bag',
+    price_paise: 89900,
+    original_price_paise: 139900,
+    image_url: '/products/bag4.jpg',
+    hover_image_url: '/products/bag4-detail.jpg',
+    gallery: ['/products/bag4.jpg', '/products/bag4-detail.jpg'],
+    stock: 18,
+    sizes: ['Regular', 'Large Bridal'],
+    description:
+      'Eco-luxury structured office and travel handbag crafted from Pochampally handloom Ikat weave, braided natural jute panels, and vegan saddle-tan handles.',
+    description_hi:
+      'हैंडलूम इकत और प्राकृतिक जूट से बना प्रीमियम स्ट्रक्चर्ड ऑफिस व ट्रैवल हैंडबैग।',
+    fabric_or_material: 'Pochampally Ikat & Braided Natural Jute',
+    care_instructions: 'Wipe with damp cloth',
+    origin_cluster: 'Jaipur & Pochampally Craft Cluster',
+    rating: 4.6,
+    reviews_count: 41,
+    featured: false,
+    is_demo: true,
+  },
+  {
+    id: 15,
+    sku: 'ZJ-BAG-015',
+    name: 'Sheeshmahal Gold Gotapatti Silk Box Clutch',
+    name_hi: 'शीशमहल गोल्ड गोटापट्टी सिल्क बॉक्स क्लच',
+    category: 'bag',
+    price_paise: 94900,
+    original_price_paise: 144900,
+    image_url: '/products/bag3-detail.jpg',
+    hover_image_url: '/products/bag3.jpg',
+    gallery: ['/products/bag3-detail.jpg', '/products/bag3.jpg'],
+    stock: 16,
+    sizes: ['Compact', 'Regular'],
+    description:
+      'Hard-case evening minaudière box clutch wrapped in raw silk with geometric Sheeshmahal gota-patti marodi work and a detachable antique gold chain.',
+    description_hi:
+      'रॉ सिल्क और शीशमहल गोटा-पट्टी मरोड़ी वर्क से सजा हार्ड-केस पार्टी बॉक्स क्लच, डिटैचेबल गोल्ड चेन के साथ।',
+    fabric_or_material: 'Raw Silk over Brass Frame',
+    care_instructions: 'Keep away from moisture',
+    origin_cluster: 'MI Road Flagship Atelier, Jaipur',
+    rating: 4.9,
+    reviews_count: 37,
+    badge: 'Festive Luxe',
+    badge_hi: 'पार्टी कलेक्शन',
+    featured: true,
+    is_demo: true,
+  },
+
+  // ─── JADAU JEWELLERY & DUPATTAS (5 Flagship Styles) ───
+  {
     id: 7,
-    name: 'Bikaneri Meenakari Peacock Jhumka Earrings',
-    name_hi: 'बीकानेरी मीनाकारी मयूर झुमका इयररिंग्स',
+    sku: 'ZJ-JWL-007',
+    name: 'Meenakari Filigree Oxidized Jhumka Earrings',
+    name_hi: 'मीनाकारी फिलिग्री ऑक्सीडाइज़्ड झुमका इयररिंग्स',
     category: 'accessory',
     price_paise: 29900,
-    original_price_paise: 59900,
+    original_price_paise: 49900,
     image_url: '/products/acc1.jpg',
     hover_image_url: '/products/acc1-detail.jpg',
-    gallery: ['/products/acc1.jpg', '/products/acc1-detail.jpg', '/products/acc1.svg'],
+    gallery: ['/products/acc1.jpg', '/products/acc1-detail.jpg'],
     stock: 60,
-    sizes: ['Free Size'],
+    sizes: ['Single Piece', 'Bridal Pair'],
     description:
-      '22K gold-toned Bikaneri Meenakari dome jhumkas hand-set with uncut Kundan stones and freshwater pearl ghungroo drops.',
+      'Feather-light Jaipur dome jhumkas with hand-painted Firozi meenakari enamel work and cascading ghungroo pearl droplets. Hypoallergenic & nickel-free.',
     description_hi:
-      'कुंदन और मोती घुंघरू पिरोए हुए 22K गोल्ड-प्लेटेड बीकानेरी मीनाकारी मयूर झुमके।',
+      'हाथ की मीनाकारी और घुंघरू मोतियों से सजे हल्के वज़न के राजस्थानी झुमके। त्वचा के लिए पूरी तरह सुरक्षित।',
+    fabric_or_material: 'Nickel-Free Brass with Meenakari Enamel',
+    care_instructions: 'Store in airtight pouch away from perfume',
+    origin_cluster: 'Johari Bazar, Jaipur',
     rating: 4.9,
     reviews_count: 215,
-    badge: 'Patron Favourite',
+    badge: 'Top Rated',
     badge_hi: 'ग्राहक पसंद',
     featured: true,
     is_demo: true,
   },
   {
     id: 8,
-    name: 'Ajrakh Modal Silk Zari Dupatta',
-    name_hi: 'अजरख मोडल सिल्क ज़री दुपट्टा',
+    sku: 'ZJ-JWL-008',
+    name: 'Banarasi Zari Border Organza Festive Dupatta',
+    name_hi: 'बनारसी ज़री बॉर्डर ऑर्गेंज़ा फेस्टिव दुपट्टा',
     category: 'accessory',
-    price_paise: 54900,
-    original_price_paise: 89900,
+    price_paise: 44900,
+    original_price_paise: 69900,
     image_url: '/products/acc2.jpg',
     hover_image_url: '/products/acc2-detail.jpg',
-    gallery: ['/products/acc2.jpg', '/products/acc2-detail.jpg', '/products/acc2.svg'],
-    stock: 40,
-    sizes: ['2.5 Meters'],
+    gallery: ['/products/acc2.jpg', '/products/acc2-detail.jpg'],
+    stock: 45,
+    sizes: ['2.25m', '2.50m'],
     description:
-      'Full-length 2.5m hand-dyed natural indigo Ajrakh modal silk dupatta finished with woven golden tissue pallu borders and hand-knotted tassels.',
+      'Sheer silk-organza drape woven with classic Banarasi kadwa gold zari borders, bootis, and hand-knotted silk tassels.',
     description_hi:
-      'सुनहरे ज़री बॉर्डर और हैंड-टैसल्स के साथ 2.5 मीटर लंबा शुद्ध मोडल सिल्क अजरख दुपट्टा।',
-    rating: 4.8,
-    reviews_count: 129,
-    badge: 'Pure Modal Silk',
-    badge_hi: 'शुद्ध मोडल सिल्क',
-    featured: false,
-    is_demo: true,
-  },
-  {
-    id: 9,
-    name: 'Zardozi Velvet Bridal Potli Clutch',
-    name_hi: 'ज़रदोज़ी वेलवेट ब्राइडल पोटली क्लच',
-    category: 'bag',
-    price_paise: 89900,
-    original_price_paise: 149900,
-    image_url: '/products/bag3.jpg',
-    hover_image_url: '/products/bag3-detail.jpg',
-    gallery: ['/products/bag3.jpg', '/products/bag3-detail.jpg', '/products/bag3.svg'],
-    stock: 15,
-    sizes: ['Free Size'],
-    description:
-      'Royal crimson micro-velvet bridal potli embroidered with metallic dabka zardozi florals and braided multi-strand pearl handle.',
-    description_hi:
-      'शादियों और उत्सवों के लिए शाही दबका ज़रदोज़ी वर्क और मोती हैंडल वाली वेलवेट ब्राइडल पोटली।',
-    rating: 4.9,
-    reviews_count: 108,
-    badge: 'Bridal Trousseau',
-    badge_hi: 'ब्राइडल कलेक्शन',
-    featured: true,
-    is_demo: true,
-  },
-  {
-    id: 10,
-    name: 'Jaipuri Block-Print Quilted Shoulder Bag',
-    name_hi: 'जयपुरी ब्लॉक-प्रिंट क्विल्टेड शोल्डर बैग',
-    category: 'bag',
-    price_paise: 64900,
-    original_price_paise: 109900,
-    image_url: '/products/bag4.jpg',
-    hover_image_url: '/products/bag4-detail.jpg',
-    gallery: ['/products/bag4.jpg', '/products/bag4-detail.jpg', '/products/bag4.svg'],
-    stock: 22,
-    sizes: ['Free Size'],
-    description:
-      'Hand-quilted organic cotton shoulder bag with Bagru botanical block prints, padded laptop sleeve, and tassel zipper pull.',
-    description_hi:
-      'बगरू हैंड-ब्लॉक प्रिंट और पैडेड कम्पार्टमेंट वाला हल्का और स्टाइलिश क्विल्टेड शोल्डर बैग।',
+      'पारंपरिक बनारसी कड़वा गोल्ड ज़री बॉर्डर और हाथ से गुंथे टैसल्स के साथ सिल्क-ऑर्गेंज़ा दुपट्टा।',
+    fabric_or_material: 'Pure Silk-Organza with Zari Border',
+    care_instructions: 'Dry clean only',
+    origin_cluster: 'Varanasi & Jaipur Weavers Guild',
     rating: 4.7,
-    reviews_count: 67,
-    badge: 'Everyday Luxury',
-    badge_hi: 'डेली लक्ज़री',
+    reviews_count: 68,
     featured: false,
     is_demo: true,
   },
   {
     id: 11,
-    name: 'Rajputana Jadau Polki Bridal Choker Set',
-    name_hi: 'राजपूताना जड़ाऊ पोल्की ब्राइडल चोकर सेट',
+    sku: 'ZJ-JWL-011',
+    name: 'Bikaneri Kundan & Pearl Bridal Choker Set',
+    name_hi: 'बीकानेरी कुंदन और पर्ल ब्राइडल चोकर सेट',
     category: 'accessory',
-    price_paise: 149900,
-    original_price_paise: 249900,
+    price_paise: 59900,
+    original_price_paise: 99900,
     image_url: '/products/acc3.jpg',
     hover_image_url: '/products/acc3-detail.jpg',
-    gallery: ['/products/acc3.jpg', '/products/acc3-detail.jpg', '/products/acc3.svg'],
-    stock: 18,
-    sizes: ['Adjustable'],
+    gallery: ['/products/acc3.jpg', '/products/acc3-detail.jpg'],
+    stock: 22,
+    sizes: ['Single Piece', 'Bridal Pair'],
     description:
-      'Heirloom Rajputana Jadau Polki choker necklace with matching chandbali earrings, emerald bead drops, and adjustable silk dori.',
+      'Hand-set Bikaneri uncut glass kundan choker necklace with multi-strand pearl pachi work, reverse meenakari backing, and matching chandbali earrings.',
     description_hi:
-      'मैचिंग चांदबाली इयररिंग्स और पन्ना मोती ड्रॉप्स के साथ शाही राजपूताना जड़ाऊ पोल्की चोकर नेकलेस सेट।',
-    rating: 5.0,
-    reviews_count: 162,
-    badge: 'Heirloom Polki',
-    badge_hi: 'शाही जड़ाऊ सेट',
+      'बीकानेरी कुंदन और मोतियों से जड़ा राजपूताना चोकर सेट, मैचिंग चांदबाली इयररिंग्स और एडजस्टेबल डोरी के साथ।',
+    fabric_or_material: '22K Gold-Plated Brass, Glass Kundan & Pearls',
+    care_instructions: 'Wipe with soft cotton cloth after wear',
+    origin_cluster: 'Bikaner & Johari Bazar, Rajasthan',
+    rating: 4.9,
+    reviews_count: 134,
+    badge: 'Royal Edition',
+    badge_hi: 'रॉयल कलेक्शन',
     featured: true,
     is_demo: true,
   },
   {
     id: 12,
-    name: 'Tribal Silver Ghungroo Payal Anklet Pair',
-    name_hi: 'ट्राइबल सिल्वर घुंघरू पायल जोड़ी',
+    sku: 'ZJ-JWL-012',
+    name: 'Handblock Ajrakh Modal Silk Heritage Dupatta',
+    name_hi: 'हैंडब्लॉक अजरख मोडल सिल्क हेरिटेज दुपट्टा',
     category: 'accessory',
-    price_paise: 44900,
+    price_paise: 49900,
     original_price_paise: 79900,
     image_url: '/products/acc4.jpg',
     hover_image_url: '/products/acc4-detail.jpg',
-    gallery: ['/products/acc4.jpg', '/products/acc4-detail.jpg', '/products/acc4.svg'],
+    gallery: ['/products/acc4.jpg', '/products/acc4-detail.jpg'],
     stock: 0,
-    sizes: ['Free Size'],
+    sizes: ['2.25m', '2.50m'],
     description:
-      'Handcrafted oxidised German silver tribal payal pair adorned with melodious ghungroo bells and secure S-hook clasp.',
+      '14-stage natural madder red and indigo Ajrakh hand-block printed on buttery-soft modal silk with woven lagdi patta borders.',
     description_hi:
-      'मधुर घुंघरू और पारंपरिक राजस्थानी नक्काशी वाली ऑक्सीडाइज़्ड सिल्वर पायल जोड़ी।',
+      'प्राकृतिक रंगों से 14 चरणों में तैयार प्रीमियम अजरख हैंड-ब्लॉक मोडल सिल्क दुपट्टा।',
+    fabric_or_material: '100% Pure Modal Silk with Lagdi Patta',
+    care_instructions: 'Dry clean recommended',
+    origin_cluster: 'Ajrakhpur & Barmer, Rajasthan',
     rating: 4.8,
-    reviews_count: 91,
-    badge: 'Archive Piece',
-    badge_hi: 'आर्काइव पीस',
-    featured: false,
-    is_demo: true,
-  },
-  {
-    id: 13,
-    name: 'Bagru Indigo Hand-Block Angrakha Kurta Set',
-    name_hi: 'बगरू इंडिगो हैंड-ब्लॉक अंगरखा कुर्ता सेट',
-    category: 'kurti',
-    price_paise: 139900,
-    original_price_paise: 219900,
-    image_url: '/products/kurti1-detail.jpg',
-    hover_image_url: '/products/kurti1.jpg',
-    gallery: ['/products/kurti1-detail.jpg', '/products/kurti1.jpg'],
-    stock: 28,
-    sizes: ['S', 'M', 'L', 'XL'],
-    description:
-      'Traditional Rajasthani tie-knot Angrakha kurta crafted in natural indigo Bagru block-printed mulmul with handcrafted cowrie shell tassels.',
-    description_hi:
-      'प्राकृतिक इंडिगो बगरू ब्लॉक-प्रिंट और हैंडमेड टैसल्स के साथ पारंपरिक राजस्थानी अंगरखा कुर्ता सेट।',
-    rating: 4.9,
-    reviews_count: 89,
-    badge: 'Jaipur Atelier',
-    badge_hi: 'जयपुर विशेष',
-    featured: true,
-    is_demo: true,
-  },
-  {
-    id: 14,
-    name: 'Mewar Gotapatti Tissue Chanderi Suit Set',
-    name_hi: 'मेवाड़ गोटापट्टी टिश्यू चंदेरी सूट सेट',
-    category: 'kurti',
-    price_paise: 189900,
-    original_price_paise: 289900,
-    image_url: '/products/kurti2-detail.jpg',
-    hover_image_url: '/products/kurti2.jpg',
-    gallery: ['/products/kurti2-detail.jpg', '/products/kurti2.jpg'],
-    stock: 19,
-    sizes: ['S', 'M', 'L', 'XL'],
-    description:
-      'Festive three-piece Chanderi silk kurta set embellished with hand-appliqued Mewari gota-patti border work and zari organza dupatta.',
-    description_hi:
-      'हैंड-एप्लिक मेवाड़ी गोटा-पट्टी वर्क और ज़री ऑर्गेंज़ा दुपट्टे के साथ शाही चंदेरी सिल्क सूट सेट।',
-    rating: 5.0,
-    reviews_count: 118,
-    badge: 'Festive Couture',
-    badge_hi: 'उत्सव विशेष',
-    featured: true,
-    is_demo: true,
-  },
-  {
-    id: 15,
-    name: 'Shekhawati Mirror-Work Festive Banjara Clutch',
-    name_hi: 'शेखावाटी मिरर-वर्क फेस्टिव बंजारा क्लच',
-    category: 'bag',
-    price_paise: 74900,
-    original_price_paise: 129900,
-    image_url: '/products/bag1-detail.jpg',
-    hover_image_url: '/products/bag1.jpg',
-    gallery: ['/products/bag1-detail.jpg', '/products/bag1.jpg'],
-    stock: 16,
-    sizes: ['Free Size'],
-    description:
-      'Hand-stitched Shekhawati abhla mirror-work clutch bag with antique brass sling chain and raw silk lining.',
-    description_hi:
-      'एंटीक ब्रास चेन और रॉ सिल्क लाइनिंग के साथ शेखावाटी आभला मिरर-वर्क क्लच बैग।',
-    rating: 4.8,
-    reviews_count: 64,
-    badge: 'Handcrafted',
-    badge_hi: 'हस्तनिर्मित',
+    reviews_count: 47,
+    badge: 'Sold Out',
+    badge_hi: 'स्टॉक समाप्त',
     featured: false,
     is_demo: true,
   },
   {
     id: 16,
-    name: 'Udaipur Navratna Kundan Chandbali & Tikka Set',
-    name_hi: 'उदयपुर नवरत्न कुंदन चांदबाली और मांगटीका सेट',
+    sku: 'ZJ-JWL-016',
+    name: 'Padmavati Jadau Polki & Emerald Maang Tikka Set',
+    name_hi: 'पद्मावती जड़ाऊ पोल्की और पन्ना मांग टीका सेट',
     category: 'accessory',
-    price_paise: 119900,
-    original_price_paise: 189900,
+    price_paise: 54900,
+    original_price_paise: 89900,
     image_url: '/products/acc3-detail.jpg',
     hover_image_url: '/products/acc3.jpg',
     gallery: ['/products/acc3-detail.jpg', '/products/acc3.jpg'],
-    stock: 14,
-    sizes: ['Free Size'],
+    stock: 29,
+    sizes: ['Single Piece', 'Bridal Pair'],
     description:
-      'Handcrafted Udaipur Navratna Kundan chandbali earrings paired with a matching bridal maang-tikka in 22K gold micron plating.',
+      'Rajasthani Borla-inspired Jadau Polki Maang Tikka and matching Karnphool earrings trimmed with emerald-green agate drops and seed pearls.',
     description_hi:
-      '22K गोल्ड माइक्रोन प्लेटिंग में उदयपुर नवरत्न कुंदन चांदबाली इयररिंग्स और मैचिंग मांगटीका सेट।',
+      'पन्ना-हरे रत्नों और मोतियों से सजा राजस्थानी जड़ाऊ पोल्की मांग टीका और कर्णफूल सेट।',
+    fabric_or_material: 'Gold-Plated Brass, Uncut Polki & Emerald Agate',
+    care_instructions: 'Store in velvet jewellery box',
+    origin_cluster: 'Johari Bazar, Jaipur',
     rating: 4.9,
-    reviews_count: 104,
-    badge: 'Bridal Heritage',
-    badge_hi: 'ब्राइडल हेरिटेज',
+    reviews_count: 52,
+    badge: 'Bridal Edit',
+    badge_hi: 'ब्राइडल सेट',
     featured: true,
     is_demo: true,
   },
 ];
 
-const FALLBACK_DETAILS: Record<
-  ProductCategory,
-  {
-    sizes: string[];
-    description: string;
-    description_hi: string;
-    badge: string;
-    badge_hi: string;
-  }
-> = {
-  kurti: {
-    sizes: ['S', 'M', 'L', 'XL'],
-    description: 'Handcrafted Jaipur ethnic wear tailored with breathable handloom fabric.',
-    description_hi: 'जयपुर के कुशल कारीगरों द्वारा तैयार प्रीमियम एथनिक कुर्ती।',
-    badge: 'Ethnic Wear',
-    badge_hi: 'एथनिक वियर',
-  },
-  bag: {
-    sizes: ['Free Size'],
-    description: 'Artisan handcrafted bag with durable stitching and spacious compartments.',
-    description_hi: 'मज़बूत सिलाई और आकर्षक डिज़ाइन वाला हैंडक्राफ्टेड बैग।',
-    badge: 'Handcrafted',
-    badge_hi: 'हस्तनिर्मित',
-  },
-  accessory: {
-    sizes: ['Free Size'],
-    description: 'Traditional Indian fashion accessory to elevate your festive look.',
-    description_hi: 'आपके फेस्टिव लुक को और खास बनाने के लिए पारंपरिक एक्सेसरी।',
-    badge: 'Festive Pick',
-    badge_hi: 'फेस्टिव पिक',
-  },
-};
+// ─── GENERATOR FOR 200 ADDITIONAL AUTHENTIC JAIPUR ATELIER PIECES (IDs 17..216 -> 216 TOTAL) ───
+const KURTI_REGIONS = [
+  { en: 'Sanganeri Mulmul', hi: 'सांगानेरी मलमल', cluster: 'Sanganer, Jaipur', fabric: '100% Pure Mulmul Cotton' },
+  { en: 'Bagru Dabu Indigo', hi: 'बगरू दाबू इंडिगो', cluster: 'Bagru, Rajasthan', fabric: 'Natural Dyed Handloom Cotton' },
+  { en: 'Chanderi Zari Silk', hi: 'चंदेरी ज़री सिल्क', cluster: 'Johari Bazar, Jaipur', fabric: 'Chanderi Silk-Cotton Blend' },
+  { en: 'Udaipur Pichwai Print', hi: 'उदयपुर पिछवाई प्रिंट', cluster: 'Udaipur, Mewar', fabric: 'Pure Muslin Silk' },
+  { en: 'Jodhpuri Bandhej Gotapatti', hi: 'जोधपुरी बंधेज गोटापट्टी', cluster: 'Jodhpur, Marwar', fabric: 'Gajji Modal Silk' },
+  { en: 'Kota Doria Handloom', hi: 'कोटा डोरिया हैंडलूम', cluster: 'Kaithoon, Kota', fabric: 'Pure Kota Doria Khat Weave' },
+  { en: 'Bikaneri Marodi Zardozi', hi: 'बीकानेरी मरोड़ी ज़रदोज़ी', cluster: 'Bikaner, Rajasthan', fabric: 'Festive Raw Silk' },
+  { en: 'Jaipur Leheriya Festive', hi: 'जयपुर लहरिया फेस्टिव', cluster: 'Bapu Bazar, Jaipur', fabric: 'Pure Georgette with Cotton Lining' },
+  { en: 'Amer Heritage Angrakha', hi: 'आमेर हेरिटेज अंगरखा', cluster: 'Amer Road, Jaipur', fabric: 'Hand-Spun Cambric Cotton' },
+  { en: 'Shekhawati Floral Block', hi: 'शेखावाटी फ्लोरल ब्लॉक', cluster: 'Nawalgarh, Shekhawati', fabric: 'Organic Slub Cotton' },
+];
 
-export function normalizeAssetUrl(url?: string, category: ProductCategory = 'kurti'): string {
-  if (!url) {
-    return category === 'kurti'
-      ? '/products/kurti1.jpg'
-      : category === 'bag'
-      ? '/products/bag1.jpg'
-      : '/products/acc1.jpg';
+const KURTI_STYLES = [
+  { en: '16-Kali Anarkali Kurta', hi: '16-कली अनारकली कुर्ता', basePrice: 89900 },
+  { en: 'Straight Kurta & Palazzo Set', hi: 'स्ट्रेट कुर्ता और पलाज़ो सेट', basePrice: 109900 },
+  { en: 'Hand-Embroidered A-Line Kurta', hi: 'हैंड-एम्ब्रॉयडर्ड ए-लाइन कुर्ता', basePrice: 79900 },
+  { en: 'Festive Sharara Suit Set', hi: 'फेस्टिव शरारा सूट सेट', basePrice: 139900 },
+  { en: 'Peplum Gota-Patti Tunic', hi: 'पेपलम गोटा-पट्टी ट्यूनिक', basePrice: 74900 },
+  { en: 'Mandarin Collar Everyday Kurta', hi: 'मैंडरिन कॉलर डेली कुर्ता', basePrice: 69900 },
+  { en: 'Flared Kalidar Suit with Dupatta', hi: 'फ्लेयर्ड कलीदार सूट सेट', basePrice: 149900 },
+  { en: 'Tassel-Tie Angrakha Kurta', hi: 'टैसल-टाई अंगरखा कुर्ता', basePrice: 94900 },
+];
+
+const COLOR_PALETTES = [
+  { en: 'Sindoor Crimson', hi: 'सिंदूरी लाल' },
+  { en: 'Royal Peacock Emerald', hi: 'मोरपंखी पन्ना' },
+  { en: 'Haldi Marigold Gold', hi: 'हल्दी सुनहरा पीला' },
+  { en: 'Gulab Dusty Rose', hi: 'गुलाबी रोज़' },
+  { en: 'Neel Midnight Indigo', hi: 'गहरा नील इंडिगो' },
+  { en: 'Kesar Saffron Coral', hi: 'केसरिया कोरल' },
+  { en: 'Chandan Ivory Cream', hi: 'चंदन आइवरी' },
+  { en: 'Jamuni RoyalPlum', hi: 'जामुनी बैंगनी' },
+  { en: 'Firoza Turquoise Blue', hi: 'फ़िरोज़ी नीला' },
+  { en: 'Mehndi Olive Green', hi: 'मेहंदी हरा' },
+];
+
+const BAG_CRAFTS = [
+  { en: 'Kutchi Abhla Mirror-Work', hi: 'कच्छी आभला मिरर-वर्क', cluster: 'Bhuj & Jaipur Guild', material: 'Hand-Embroidered Cotton & Glass Mirrors' },
+  { en: 'Zardozi Velvet Bridal', hi: 'ज़रदोज़ी वेलवेट ब्राइडल', cluster: 'Johari Bazar, Jaipur', material: 'Micro-Velvet & Metallic Dabka Wire' },
+  { en: 'Sanganeri Quilted Block-Print', hi: 'सांगानेरी क्विल्टेड ब्लॉक-प्रिंट', cluster: 'Sanganer, Jaipur', material: 'Heavyweight Quilted Organic Canvas' },
+  { en: 'Barmer Applique Patchwork', hi: 'बाड़मेर एप्लिक पैचवर्क', cluster: 'Barmer, Rajasthan', material: 'Vintage Brocade & Handloom Cotton' },
+  { en: 'Pochampally Ikat & Jute', hi: 'पोचमपल्ली इकत और जूट', cluster: 'Jaipur Handloom Collective', material: 'Handwoven Ikat & Braided Jute' },
+  { en: 'Moti-Work Pearl Beaded', hi: 'मोती-वर्क पर्ल बीडेड', cluster: 'Udaipur Artisan Hub', material: 'Raw Silk & Seed Pearls' },
+];
+
+const BAG_SILHOUETTES = [
+  { en: 'Drawstring Bridal Potli', hi: 'ड्रॉस्ट्रिंग ब्राइडल पोटली', basePrice: 69900, sizes: ['Compact', 'Regular', 'Large Bridal'] },
+  { en: 'Crossbody Boho Sling Bag', hi: 'क्रॉसबॉडी बोहो स्लिंग बैग', basePrice: 59900, sizes: ['Compact', 'Regular', 'Large Bridal'] },
+  { en: 'Structured Everyday Tote Bag', hi: 'स्ट्रक्चर्ड डेली टोट बैग', basePrice: 64900, sizes: ['Regular', 'Large Bridal'] },
+  { en: 'Hard-Case Evening Box Clutch', hi: 'हार्ड-केस पार्टी बॉक्स क्लच', basePrice: 89900, sizes: ['Compact', 'Regular'] },
+  { en: 'Travel Duffle & Weekender Bag', hi: 'ट्रैवल डफ़ल और वीकेंडर बैग', basePrice: 119900, sizes: ['Regular', 'Large Bridal'] },
+];
+
+const JEWELLERY_CRAFTS = [
+  { en: 'Bikaneri Uncut Jadau Polki', hi: 'बीकानेरी अनकट जड़ाऊ पोल्की', cluster: 'Bikaner, Rajasthan', material: '22K Gold-Plated Brass & Polki' },
+  { en: 'Jaipur Firozi Meenakari', hi: 'जयपुर फ़िरोज़ी मीनाकारी', cluster: 'Johari Bazar, Jaipur', material: 'Hand-Enamelled Brass & Pearls' },
+  { en: 'Thewa Gold-on-Glass Pratapgarh', hi: 'थेवा गोल्ड-ऑन-ग्लास प्रतापगढ़', cluster: 'Pratapgarh, Rajasthan', material: 'Belgian Glass & Gold Leaf Filigree' },
+  { en: 'Shekhawati Oxidized Silver-Look', hi: 'शेखावाटी ऑक्सीडाइज़्ड सिल्वर-लुक', cluster: 'Sikar, Rajasthan', material: 'German Silver & Ghungroo Beads' },
+  { en: 'Banarasi Kadwa Zari Silk', hi: 'बनारसी कड़वा ज़री सिल्क', cluster: 'Jaipur & Varanasi Guild', material: 'Pure Silk Organza & Zari' },
+  { en: 'Ajrakh Natural Dyed Modal', hi: 'अजरख नेचुरल मोडल सिल्क', cluster: 'Barmer & Ajrakhpur', material: '100% Pure Modal Silk' },
+];
+
+const JEWELLERY_TYPES = [
+  { en: 'Dome Jhumka Earrings', hi: 'डोम झुमका इयररिंग्स', basePrice: 34900, sizes: ['Single Piece', 'Bridal Pair'] },
+  { en: 'Royal Choker Necklace Set', hi: 'रॉयल चोकर नेकलेस सेट', basePrice: 69900, sizes: ['Single Piece', 'Bridal Pair'] },
+  { en: 'Chandbali & Maang Tikka Set', hi: 'चांदबाली और मांग टीका सेट', basePrice: 49900, sizes: ['Single Piece', 'Bridal Pair'] },
+  { en: 'Rajasthani Aad & Rani Haar', hi: 'राजस्थानी आड़ और रानी हार', basePrice: 89900, sizes: ['Single Piece', 'Bridal Pair'] },
+  { en: 'Handwoven Heritage Dupatta', hi: 'हैंडवोवन हेरिटेज दुपट्टा', basePrice: 54900, sizes: ['2.25m', '2.50m'] },
+];
+
+const KURTI_PHOTOS = [
+  ['/products/kurti1.jpg', '/products/kurti1-detail.jpg'],
+  ['/products/kurti2.jpg', '/products/kurti2-detail.jpg'],
+  ['/products/kurti3.jpg', '/products/kurti3-detail.jpg'],
+  ['/products/kurti4.jpg', '/products/kurti4-detail.jpg'],
+];
+
+const BAG_PHOTOS = [
+  ['/products/bag1.jpg', '/products/bag1-detail.jpg'],
+  ['/products/bag2.jpg', '/products/bag2-detail.jpg'],
+  ['/products/bag3.jpg', '/products/bag3-detail.jpg'],
+  ['/products/bag4.jpg', '/products/bag4-detail.jpg'],
+];
+
+const ACC_PHOTOS = [
+  ['/products/acc1.jpg', '/products/acc1-detail.jpg'],
+  ['/products/acc2.jpg', '/products/acc2-detail.jpg'],
+  ['/products/acc3.jpg', '/products/acc3-detail.jpg'],
+  ['/products/acc4.jpg', '/products/acc4-detail.jpg'],
+];
+
+function generateExtendedCatalog(): Product[] {
+  const generated: Product[] = [];
+  let nextId = 17;
+
+  // 1) Generate 90 Additional Kurtis (IDs 17..106)
+  for (let i = 0; i < 90; i++) {
+    const id = nextId++;
+    const region = KURTI_REGIONS[i % KURTI_REGIONS.length];
+    const style = KURTI_STYLES[Math.floor(i / KURTI_REGIONS.length) % KURTI_STYLES.length];
+    const color = COLOR_PALETTES[(i * 3) % COLOR_PALETTES.length];
+    const photos = KURTI_PHOTOS[i % KURTI_PHOTOS.length];
+    const price = style.basePrice + ((i % 7) * 5000);
+    const orig = Math.round(price * 1.38);
+
+    generated.push({
+      id,
+      sku: `ZJ-KRT-${String(id).padStart(3, '0')}`,
+      name: `${color.en} ${region.en} ${style.en}`,
+      name_hi: `${color.hi} ${region.hi} ${style.hi}`,
+      category: 'kurti',
+      price_paise: price,
+      original_price_paise: orig,
+      image_url: photos[i % 2],
+      hover_image_url: photos[(i + 1) % 2],
+      gallery: [photos[0], photos[1]],
+      stock: 8 + ((i * 7) % 42),
+      sizes: ['S', 'M', 'L', 'XL', 'XXL'],
+      description: `Handcrafted in ${region.cluster} using ${region.fabric}. Tailored in our ${color.en.toLowerCase()} palette with artisanal Jaipur finishing, breathable comfort, and size-graded pattern precision.`,
+      description_hi: `${region.cluster} के कारीगरों द्वारा ${region.fabric} में तैयार ${color.hi} ${style.hi}।`,
+      fabric_or_material: region.fabric,
+      care_instructions: 'Gentle cold hand wash or dry clean',
+      origin_cluster: region.cluster,
+      rating: Number((4.6 + ((i % 4) * 0.1)).toFixed(1)),
+      reviews_count: 14 + ((i * 11) % 120),
+      badge: i % 5 === 0 ? 'Artisan Edit' : i % 7 === 0 ? 'Bestseller' : undefined,
+      badge_hi: i % 5 === 0 ? 'कारीगर विशेष' : i % 7 === 0 ? 'लोकप्रिय' : undefined,
+      featured: i % 6 === 0,
+      is_demo: true,
+    });
   }
-  return url.replace(/\.webp$/i, '.svg');
+
+  // 2) Generate 55 Additional Handcrafted Bags & Potlis (IDs 107..161)
+  for (let i = 0; i < 55; i++) {
+    const id = nextId++;
+    const craft = BAG_CRAFTS[i % BAG_CRAFTS.length];
+    const silhouette = BAG_SILHOUETTES[Math.floor(i / BAG_CRAFTS.length) % BAG_SILHOUETTES.length];
+    const color = COLOR_PALETTES[(i * 2 + 1) % COLOR_PALETTES.length];
+    const photos = BAG_PHOTOS[i % BAG_PHOTOS.length];
+    const price = silhouette.basePrice + ((i % 6) * 5000);
+    const orig = Math.round(price * 1.4);
+
+    generated.push({
+      id,
+      sku: `ZJ-BAG-${String(id).padStart(3, '0')}`,
+      name: `${color.en} ${craft.en} ${silhouette.en}`,
+      name_hi: `${color.hi} ${craft.hi} ${silhouette.hi}`,
+      category: 'bag',
+      price_paise: price,
+      original_price_paise: orig,
+      image_url: photos[i % 2],
+      hover_image_url: photos[(i + 1) % 2],
+      gallery: [photos[0], photos[1]],
+      stock: 6 + ((i * 5) % 30),
+      sizes: silhouette.sizes,
+      description: `Hand-stitched in ${craft.cluster} from ${craft.material}. Available in multiple capacities with reinforced brass hardware and lined compartments.`,
+      description_hi: `${craft.cluster} में ${craft.material} से हस्तनिर्मित ${color.hi} ${silhouette.hi}।`,
+      fabric_or_material: craft.material,
+      care_instructions: 'Spot clean only; store in cotton dust bag',
+      origin_cluster: craft.cluster,
+      rating: Number((4.6 + ((i % 4) * 0.1)).toFixed(1)),
+      reviews_count: 11 + ((i * 9) % 95),
+      badge: i % 6 === 0 ? 'Handcrafted' : undefined,
+      badge_hi: i % 6 === 0 ? 'हस्तनिर्मित' : undefined,
+      featured: i % 8 === 0,
+      is_demo: true,
+    });
+  }
+
+  // 3) Generate 55 Additional Jadau Jewellery & Heritage Dupattas (IDs 162..216)
+  for (let i = 0; i < 55; i++) {
+    const id = nextId++;
+    const craft = JEWELLERY_CRAFTS[i % JEWELLERY_CRAFTS.length];
+    const jtype = JEWELLERY_TYPES[Math.floor(i / JEWELLERY_CRAFTS.length) % JEWELLERY_TYPES.length];
+    const color = COLOR_PALETTES[(i * 5) % COLOR_PALETTES.length];
+    const photos = ACC_PHOTOS[i % ACC_PHOTOS.length];
+    const price = jtype.basePrice + ((i % 5) * 5000);
+    const orig = Math.round(price * 1.42);
+
+    generated.push({
+      id,
+      sku: `ZJ-JWL-${String(id).padStart(3, '0')}`,
+      name: `${color.en} ${craft.en} ${jtype.en}`,
+      name_hi: `${color.hi} ${craft.hi} ${jtype.hi}`,
+      category: 'accessory',
+      price_paise: price,
+      original_price_paise: orig,
+      image_url: photos[i % 2],
+      hover_image_url: photos[(i + 1) % 2],
+      gallery: [photos[0], photos[1]],
+      stock: 10 + ((i * 3) % 35),
+      sizes: jtype.sizes,
+      description: `Crafted by master karigars of ${craft.cluster} in ${craft.material}. Finished with skin-safe plating and signature royal Jaipur detailing.`,
+      description_hi: `${craft.cluster} के उस्ताद कारीगरों द्वारा ${craft.material} से निर्मित ${color.hi} ${jtype.hi}।`,
+      fabric_or_material: craft.material,
+      care_instructions: 'Keep away from moisture and sprays',
+      origin_cluster: craft.cluster,
+      rating: Number((4.7 + ((i % 3) * 0.1)).toFixed(1)),
+      reviews_count: 18 + ((i * 7) % 110),
+      badge: i % 5 === 0 ? 'Heirloom Craft' : undefined,
+      badge_hi: i % 5 === 0 ? 'विरासत शिल्प' : undefined,
+      featured: i % 7 === 0,
+      is_demo: true,
+    });
+  }
+
+  return generated;
 }
 
-export function enrichProduct(raw: Partial<Product> & { id: number; name: string }): Product {
-  const seedMatch = DEMO_PRODUCTS.find((p) => p.id === Number(raw.id));
-  const category: ProductCategory =
-    raw.category === 'bag' || raw.category === 'accessory' || raw.category === 'kurti'
-      ? raw.category
-      : seedMatch?.category || 'kurti';
-  const fallback = FALLBACK_DETAILS[category];
+export const DEMO_PRODUCTS: Product[] = [
+  ...CORE_FLAGSHIP_PRODUCTS,
+  ...generateExtendedCatalog(),
+].map(attachSizePriceMaps);
 
-  const pricePaise = Number(raw.price_paise ?? seedMatch?.price_paise ?? 79900);
-  const imageUrl = raw.image_url
-    ? normalizeAssetUrl(raw.image_url, category)
-    : seedMatch?.image_url || normalizeAssetUrl(undefined, category);
+export function getProductById(id: number): Product | undefined {
+  return DEMO_PRODUCTS.find((p) => p.id === Number(id));
+}
 
-  return {
+/**
+ * Merges a raw database product row with rich boutique metadata and size-based price tables.
+ */
+export function enrichProduct(
+  raw: Partial<Product> & { id: number; name: string; price_paise: number }
+): Product {
+  const match = DEMO_PRODUCTS.find((d) => d.id === Number(raw.id));
+  const normalizedUrl = raw.image_url
+    ? raw.image_url.replace(/\.webp$/i, '.svg')
+    : match?.image_url || '/products/kurti1.jpg';
+
+  const merged: Product = {
     id: Number(raw.id),
-    name: raw.name || seedMatch?.name || 'Fashion Item',
-    name_hi: raw.name_hi || seedMatch?.name_hi || raw.name || 'फ़ैशन आइटम',
-    category,
-    price_paise: pricePaise,
+    sku: raw.sku || match?.sku || `ZJ-PRD-${String(raw.id).padStart(3, '0')}`,
+    name: raw.name || match?.name || 'Boutique Piece',
+    name_hi: raw.name_hi || match?.name_hi || raw.name,
+    category: (raw.category as ProductCategory) || match?.category || 'kurti',
+    price_paise: Number(raw.price_paise),
     original_price_paise:
-      raw.original_price_paise ?? seedMatch?.original_price_paise ?? Math.round(pricePaise * 1.4),
-    image_url: imageUrl,
-    hover_image_url: raw.hover_image_url ?? seedMatch?.hover_image_url,
-    gallery: raw.gallery ?? seedMatch?.gallery ?? [imageUrl],
-    stock: typeof raw.stock === 'number' ? raw.stock : seedMatch?.stock ?? 10,
-    sizes: raw.sizes || seedMatch?.sizes || fallback.sizes,
-    description: raw.description || seedMatch?.description || fallback.description,
-    description_hi: raw.description_hi || seedMatch?.description_hi || fallback.description_hi,
-    rating: raw.rating ?? seedMatch?.rating ?? 4.7,
-    reviews_count: raw.reviews_count ?? seedMatch?.reviews_count ?? 42,
-    badge: raw.badge ?? seedMatch?.badge ?? fallback.badge,
-    badge_hi: raw.badge_hi ?? seedMatch?.badge_hi ?? fallback.badge_hi,
-    featured: raw.featured ?? seedMatch?.featured ?? false,
-    is_demo: true,
-    created_at: raw.created_at,
+      raw.original_price_paise ||
+      match?.original_price_paise ||
+      Math.round(Number(raw.price_paise) * 1.35),
+    image_url: normalizedUrl,
+    hover_image_url: raw.hover_image_url || match?.hover_image_url,
+    gallery: raw.gallery || match?.gallery || [normalizedUrl],
+    stock: typeof raw.stock === 'number' ? raw.stock : (match?.stock ?? 10),
+    sizes: raw.sizes || match?.sizes || ['Free Size'],
+    description:
+      raw.description ||
+      match?.description ||
+      'Handcrafted Indian ethnic boutique piece crafted by master artisans.',
+    description_hi:
+      raw.description_hi ||
+      match?.description_hi ||
+      'पारंपरिक भारतीय कारीगरी से तैयार विशेष बुटीक उत्पाद।',
+    fabric_or_material: raw.fabric_or_material || match?.fabric_or_material,
+    care_instructions: raw.care_instructions || match?.care_instructions,
+    origin_cluster: raw.origin_cluster || match?.origin_cluster,
+    rating: raw.rating || match?.rating || 4.8,
+    reviews_count: raw.reviews_count || match?.reviews_count || 24,
+    badge: raw.badge ?? match?.badge,
+    badge_hi: raw.badge_hi ?? match?.badge_hi,
+    featured: raw.featured ?? match?.featured ?? false,
+    is_demo: raw.is_demo ?? true,
   };
+
+  return attachSizePriceMaps(merged);
 }
+
+export type SortOption = 'featured' | 'price-asc' | 'price-desc' | 'rating';
 
 export function filterAndSortProducts(
   products: Product[],
@@ -485,17 +813,26 @@ export function filterAndSortProducts(
     query?: string;
     sort?: SortOption;
     inStockOnly?: boolean;
+    sizeFilter?: string;
   }
 ): Product[] {
-  const { category = 'all', query = '', sort = 'featured', inStockOnly = false } = options;
-  const normalizedQuery = query.trim().toLowerCase();
+  const {
+    category = 'all',
+    query = '',
+    sort = 'featured',
+    inStockOnly = false,
+    sizeFilter = '',
+  } = options;
+  const q = query.trim().toLowerCase();
 
   const filtered = products.filter((p) => {
     if (category !== 'all' && p.category !== category) return false;
     if (inStockOnly && p.stock <= 0) return false;
-    if (normalizedQuery) {
-      const hay = `${p.name} ${p.name_hi} ${p.description} ${p.description_hi} ${p.category}`.toLowerCase();
-      if (!hay.includes(normalizedQuery)) return false;
+    if (sizeFilter && !p.sizes?.includes(sizeFilter)) return false;
+    if (q) {
+      const hay =
+        `${p.name} ${p.name_hi} ${p.sku || ''} ${p.description} ${p.description_hi} ${p.category} ${p.origin_cluster || ''} ${p.fabric_or_material || ''}`.toLowerCase();
+      if (!hay.includes(q)) return false;
     }
     return true;
   });
@@ -509,30 +846,22 @@ export function filterAndSortProducts(
       sorted.sort((a, b) => b.price_paise - a.price_paise);
       break;
     case 'rating':
-      sorted.sort((a, b) => b.rating - a.rating);
-      break;
-    case 'name-asc':
-      sorted.sort((a, b) => a.name.localeCompare(b.name));
-      break;
-    case 'newest':
-      sorted.sort((a, b) => b.id - a.id);
+      sorted.sort((a, b) => b.rating - a.rating || b.reviews_count - a.reviews_count);
       break;
     case 'featured':
     default:
-      sorted.sort((a, b) => Number(Boolean(b.featured)) - Number(Boolean(a.featured)) || a.id - b.id);
+      sorted.sort(
+        (a, b) => Number(Boolean(b.featured)) - Number(Boolean(a.featured)) || a.id - b.id
+      );
       break;
   }
   return sorted;
 }
 
-export function getProductById(id: number): Product | undefined {
-  return DEMO_PRODUCTS.find((p) => p.id === Number(id));
-}
-
 export function paginateProducts(
   products: Product[],
   page: number,
-  perPage: number = 8
+  perPage: number = 12
 ): {
   items: Product[];
   totalItems: number;

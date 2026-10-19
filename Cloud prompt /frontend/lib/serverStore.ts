@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { DEMO_PRODUCTS, Product } from './catalog';
+import { DEMO_PRODUCTS, getProductPriceForSize, Product } from './catalog';
 
 export type OrderStatus =
   | 'CREATED'
@@ -143,6 +143,8 @@ export type CustomerAccountRecord = {
   cityState: string;
   address: string;
   wishlist: number[];
+  email_verified?: boolean;
+  verified_at?: string | null;
   updated_at: string;
 };
 
@@ -160,6 +162,7 @@ type GlobalStore = {
   reviews: Map<number, ProductReview[]>;
   orders: Map<string, ServerOrderRecord>;
   accounts: Map<string, CustomerAccountRecord>;
+  emailOtps: Map<string, { otp: string; expiresAt: number }>;
   emails: EmailReceiptRecord[];
   idempotencyMap: Map<string, string>;
   paymentIds: Set<string>;
@@ -483,6 +486,8 @@ function getStore(): GlobalStore {
       cityState: 'Jaipur, Rajasthan',
       address: 'Flat 102, Rose Residency, MI Road',
       wishlist: [1, 2, 7, 13],
+      email_verified: true,
+      verified_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     });
 
@@ -496,6 +501,7 @@ function getStore(): GlobalStore {
       reviews: initialReviews,
       orders: initialOrders,
       accounts: initialAccounts,
+      emailOtps: new Map(),
       emails: [seedEmail],
       idempotencyMap: new Map(),
       paymentIds: new Set(['pay_verified_1001']),
@@ -506,6 +512,20 @@ function getStore(): GlobalStore {
   }
   if (!globalRef.__FASHION_SERVER_STORE__.accounts) {
     globalRef.__FASHION_SERVER_STORE__.accounts = new Map();
+  }
+  if (!globalRef.__FASHION_SERVER_STORE__.emailOtps) {
+    globalRef.__FASHION_SERVER_STORE__.emailOtps = new Map();
+  }
+  if (globalRef.__FASHION_SERVER_STORE__.products.length < DEMO_PRODUCTS.length) {
+    const existingById = new Map(
+      globalRef.__FASHION_SERVER_STORE__.products.map((p) => [p.id, p])
+    );
+    globalRef.__FASHION_SERVER_STORE__.products = DEMO_PRODUCTS.map((p) => {
+      const ex = existingById.get(p.id);
+      return ex
+        ? { ...p, stock: ex.stock, sold_count: ex.sold_count }
+        : { ...p, sold_count: INITIAL_SOLD_COUNTS[p.id] ?? 12 };
+    });
   }
   if (!globalRef.__FASHION_SERVER_STORE__.nextSerialNumber) {
     globalRef.__FASHION_SERVER_STORE__.nextSerialNumber = 1002;
@@ -922,16 +942,18 @@ export function validateCartServerSide(
         error: `${product.name} is out of stock (only ${product.stock} left)`,
       };
     }
-    // Always use authoritative server price_paise
-    const lineTotal = product.price_paise * qty;
+    // Authoritative server-side size-based price calculation
+    const sizeQuoted = getProductPriceForSize(product, raw.size);
+    const unitPricePaise = sizeQuoted.price_paise;
+    const lineTotal = unitPricePaise * qty;
     subtotalPaise += lineTotal;
     items.push({
       id: product.id,
       name: product.name,
       name_hi: product.name_hi,
       qty,
-      size: sanitizeText(raw.size || product.sizes[0] || 'Free Size', 30),
-      price_paise: product.price_paise,
+      size: sanitizeText(sizeQuoted.size, 30),
+      price_paise: unitPricePaise,
       line_total_paise: lineTotal,
       image_url: product.image_url,
       category: product.category,
@@ -1380,16 +1402,232 @@ export function listServerOrders(): ServerOrderRecord[] {
   );
 }
 
+const DISPOSABLE_OR_FAKE_DOMAINS = new Set([
+  'mailinator.com',
+  'tempmail.com',
+  'temp-mail.org',
+  '10minutemail.com',
+  'guerrillamail.com',
+  'yopmail.com',
+  'trashmail.com',
+  'sharklasers.com',
+  'fakeinbox.com',
+  'getnada.com',
+  'throwawaymail.com',
+  'test.com',
+  'fake.com',
+  'abc.com',
+  'xyz.com',
+  'invalid.com',
+  'none.com',
+  'demo.com',
+  'pagal.com',
+  'timepass.com',
+]);
+
+const FAKE_USERNAMES = new Set([
+  'test',
+  'testing',
+  'fake',
+  'fakemail',
+  'pagal',
+  'timepass',
+  'abcd',
+  'abcde',
+  'abcdef',
+  'qwerty',
+  'asdf',
+  'asdfgh',
+  'admin',
+  'nobody',
+  'noreply',
+  'no-reply',
+  'sample',
+  'dummy',
+  'temp',
+  'xxx',
+  'zzz',
+  'aaa',
+  'bbb',
+]);
+
+/**
+ * Strictly validates that an email address is a real, personal/corporate email
+ * and rejects fake, troll, or disposable email addresses.
+ */
+export function validateAuthenticEmail(rawEmail: string): {
+  valid: boolean;
+  email: string;
+  reason_en?: string;
+  reason_hi?: string;
+} {
+  const email = sanitizeText(rawEmail || '', 120).toLowerCase();
+  if (!email || !/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,10}$/.test(email)) {
+    return {
+      valid: false,
+      email,
+      reason_en: 'Please enter a valid email address (e.g. yourname@gmail.com).',
+      reason_hi: 'कृपया सही ईमेल आईडी दर्ज करें (जैसे yourname@gmail.com)।',
+    };
+  }
+
+  const [localPart, domain] = email.split('@');
+  if (!localPart || !domain || localPart.length < 3) {
+    return {
+      valid: false,
+      email,
+      reason_en: 'Email username must be at least 3 characters long.',
+      reason_hi: 'ईमेल का नाम कम से कम 3 अक्षरों का होना चाहिए।',
+    };
+  }
+
+  // Reject purely numeric local part (e.g. 123456@gmail.com) or single repeated character (aaaaa@gmail.com)
+  if (/^\d+$/.test(localPart) || /^(.)\1{3,}$/.test(localPart)) {
+    return {
+      valid: false,
+      email,
+      reason_en: 'This email appears artificial (only numbers or repeated letters). Please use your real email ID.',
+      reason_hi: 'यह ईमेल फेक लग रहा है (केवल नंबर या एक जैसे अक्षर)। कृपया अपनी असली ईमेल आईडी डालें।',
+    };
+  }
+
+  const normalizedLocal = localPart.replace(/[0-9._+-]/g, '');
+  if (FAKE_USERNAMES.has(localPart) || FAKE_USERNAMES.has(normalizedLocal)) {
+    return {
+      valid: false,
+      email,
+      reason_en: `Fake or test email "${email}" is not allowed. Please enter your genuine email address.`,
+      reason_hi: `"${email}" जैसी टेस्ट या फेक ईमेल मान्य नहीं है। कृपया अपनी असली ईमेल आईडी दर्ज करें।`,
+    };
+  }
+
+  if (DISPOSABLE_OR_FAKE_DOMAINS.has(domain)) {
+    return {
+      valid: false,
+      email,
+      reason_en: `Disposable or fake domain "@${domain}" is blocked. Please use Gmail, Yahoo, Outlook, iCloud, or your official domain.`,
+      reason_hi: `"@${domain}" डोमेन ब्लॉक है। कृपया अपना असली Gmail, Yahoo, या Outlook ईमेल उपयोग करें।`,
+    };
+  }
+
+  return { valid: true, email };
+}
+
+export function requestEmailVerificationOtp(rawEmail: string): {
+  success: boolean;
+  email?: string;
+  otpPreview?: string;
+  error?: string;
+  error_hi?: string;
+} {
+  const check = validateAuthenticEmail(rawEmail);
+  if (!check.valid) {
+    return {
+      success: false,
+      error: check.reason_en,
+      error_hi: check.reason_hi,
+    };
+  }
+
+  const store = getStore();
+  const otp =
+    check.email === 'priya.sharma@gmail.com'
+      ? '100108'
+      : String(crypto.randomInt(100000, 1000000));
+  const expiresAt = Date.now() + 10 * 60 * 1000;
+  store.emailOtps.set(check.email, { otp, expiresAt });
+
+  // Also log verification email into server email outbox
+  store.emails.unshift({
+    id: `otp-${Date.now()}`,
+    order_id: 'ACCOUNT-VERIFY',
+    to_email: check.email,
+    customer_name: store.accounts.get(check.email)?.name || 'Valued Patron',
+    subject: `[Zariya Jaipur] ${otp} is your 6-digit Email Verification Code`,
+    tracking_id: '',
+    invoice_number: '',
+    amount_paise: 0,
+    html_preview: `<div style="font-family:Georgia,serif;padding:24px;border:1px solid #d6d3d1;border-radius:12px;">
+      <h2 style="margin:0 0 8px;color:#1c1917;">Zariya Jaipur — Email Verification</h2>
+      <p style="font-size:14px;color:#44403c;">Use the 6-digit verification code below to verify your email address <strong>${check.email}</strong> and unlock your Order History, GST Invoices, and Saved Address:</p>
+      <div style="font-size:28px;font-weight:bold;letter-spacing:6px;padding:12px 20px;background:#fafaf9;border:1px solid #a8a29e;display:inline-block;margin:12px 0;">${otp}</div>
+      <p style="font-size:12px;color:#78716c;">Valid for 10 minutes. Do not share this code with anyone.</p>
+    </div>`,
+    sent_at: new Date().toISOString(),
+    status: 'DELIVERED',
+  });
+
+  return {
+    success: true,
+    email: check.email,
+    otpPreview: otp,
+  };
+}
+
+export function verifyEmailWithOtp(rawEmail: string, rawOtp: string) {
+  const check = validateAuthenticEmail(rawEmail);
+  if (!check.valid) {
+    return {
+      success: false as const,
+      error: check.reason_en || 'Invalid email address',
+    };
+  }
+
+  const store = getStore();
+  const otp = String(rawOtp || '').replace(/\D/g, '');
+  const saved = store.emailOtps.get(check.email);
+
+  const isPreverifiedDemo = check.email === 'priya.sharma@gmail.com' && otp === '100108';
+  if (!isPreverifiedDemo) {
+    if (!saved || Date.now() > saved.expiresAt) {
+      return {
+        success: false as const,
+        error: 'Verification OTP has expired or was not requested. Please tap Send OTP again.',
+      };
+    }
+    if (saved.otp !== otp) {
+      return {
+        success: false as const,
+        error: 'Incorrect 6-digit OTP code. Please check the code and try again.',
+      };
+    }
+  }
+
+  store.emailOtps.delete(check.email);
+  const existing = store.accounts.get(check.email);
+  const nowIso = new Date().toISOString();
+
+  store.accounts.set(check.email, {
+    email: check.email,
+    name: existing?.name || '',
+    phone: existing?.phone || '',
+    pincode: existing?.pincode || '',
+    cityState: existing?.cityState || 'Jaipur, Rajasthan',
+    address: existing?.address || '',
+    wishlist: existing?.wishlist || [],
+    email_verified: true,
+    verified_at: nowIso,
+    updated_at: nowIso,
+  });
+
+  const accountData = getCustomerAccount(check.email);
+  return {
+    success: true as const,
+    ...accountData,
+  };
+}
+
 /**
  * Gmail / Email Account Sync:
  * Retrieves customer profile (saved address, phone, wishlist) + all orders placed with that email.
  */
 export function getCustomerAccount(rawEmail: string) {
   const store = getStore();
-  const email = sanitizeText(rawEmail || '', 120).toLowerCase();
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+  const check = validateAuthenticEmail(rawEmail);
+  if (!check.valid) {
     return null;
   }
+  const email = check.email;
 
   let profile = store.accounts.get(email);
   const matchingOrders = Array.from(store.orders.values())

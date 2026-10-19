@@ -354,7 +354,6 @@ async function trackOrder(req, reply) {
   return {
     success: true,
     orderId: o.order_id,
-    invoiceNumber: `ZJ/2026-27/${o.order_id.slice(-6)}`,
     trackingId: o.tracking_id || null,
     paymentStatus: o.status,
     fulfillmentStatus:
@@ -362,12 +361,14 @@ async function trackOrder(req, reply) {
       (o.status === 'CONFIRMED' ? 'ORDER_PLACED' : 'PENDING_PAYMENT'),
     courierName: o.courier_name || 'BlueDart Royal Priority Air',
     estimatedDelivery: o.estimated_delivery || null,
+    destinationHub: 'Regional Sorting Hub (Consignee PII Protected)',
     trackingHistory: o.tracking_history || [],
-    customerName: o.customer_name,
-    customerPhoneMasked: maskPhone(o.phone),
-    address: o.address,
-    amountPaise: o.amount_paise,
-    items: o.items || [],
+    items: (o.items || []).map((item) => ({
+      id: item.id,
+      name: item.name,
+      qty: item.qty,
+      size: item.size,
+    })),
     createdAt: o.created_at,
     confirmedAt: o.confirmed_at,
   };

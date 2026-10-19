@@ -39,7 +39,7 @@ describe('Phases 3–10 Backend API — Products, Coupons, Auto Stock Deduction,
     assert.equal(res.statusCode, 200);
     const data = res.json();
     assert.equal(data.success, true);
-    assert.equal(data.products.length >= 9, true);
+    assert.equal(data.products.length >= 200, true);
 
     const single = await app.inject({ method: 'GET', url: '/api/products/1' });
     assert.equal(single.statusCode, 200);
@@ -201,7 +201,9 @@ describe('Phases 3–10 Backend API — Products, Coupons, Auto Stock Deduction,
     assert.equal(trackRes2.statusCode, 200);
     assert.equal(trackRes2.json().fulfillmentStatus, 'SHIPPED');
     assert.equal(trackRes2.json().courierName, 'BlueDart Express');
-    assert.equal(trackRes2.json().customerPhoneMasked, '91******80');
+    assert.equal(trackRes2.json().customerName, undefined);
+    assert.equal(trackRes2.json().phone, undefined);
+    assert.equal(trackRes2.json().address, undefined);
   });
 
   it('enforces admin authentication, product CRUD, 4-Tier Fallback switching, and audit logs', async () => {

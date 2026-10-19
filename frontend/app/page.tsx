@@ -22,6 +22,7 @@ export default function HomePage() {
   const [category, setCategory] = useState<ProductCategory | 'all'>('all');
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<SortOption>('featured');
+  const [sizeFilter, setSizeFilter] = useState('');
   const [inStockOnly, setInStockOnly] = useState(false);
   const [page, setPage] = useState(1);
 
@@ -52,15 +53,16 @@ export default function HomePage() {
         query,
         sort,
         inStockOnly,
+        sizeFilter,
       }),
-    [products, category, query, sort, inStockOnly]
+    [products, category, query, sort, inStockOnly, sizeFilter]
   );
 
-  const paginated = useMemo(() => paginateProducts(filtered, page, 8), [filtered, page]);
+  const paginated = useMemo(() => paginateProducts(filtered, page, 12), [filtered, page]);
 
   useEffect(() => {
     setPage(1);
-  }, [category, query, sort, inStockOnly]);
+  }, [category, query, sort, inStockOnly, sizeFilter]);
 
   const selectCategoryAndScroll = (cat: ProductCategory | 'all') => {
     setCategory(cat);
@@ -340,6 +342,25 @@ export default function HomePage() {
                   />
                 </svg>
               </div>
+
+              <select
+                value={sizeFilter}
+                onChange={(e) => setSizeFilter(e.target.value)}
+                aria-label="Filter by Size"
+                className="px-3 py-2 rounded-xl border border-stone-300 bg-white text-xs sm:text-sm font-semibold text-stone-700 focus:outline-none focus:ring-2 focus:ring-rose-500"
+              >
+                <option value="">{lang === 'hi' ? 'सभी साइज़' : 'All Sizes'}</option>
+                <option value="S">Size: S</option>
+                <option value="M">Size: M</option>
+                <option value="L">Size: L</option>
+                <option value="XL">Size: XL</option>
+                <option value="XXL">Size: XXL</option>
+                <option value="Compact">Bag: Compact</option>
+                <option value="Regular">Bag: Regular</option>
+                <option value="Large Bridal">Bag: Large Bridal</option>
+                <option value="2.25m">Dupatta: 2.25m</option>
+                <option value="2.50m">Dupatta: 2.50m</option>
+              </select>
 
               <select
                 value={sort}

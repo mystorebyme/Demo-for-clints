@@ -36,6 +36,9 @@ export default function Header() {
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [emailInput, setEmailInput] = useState('');
+  const [otpPendingEmail, setOtpPendingEmail] = useState('');
+  const [otpInput, setOtpInput] = useState('');
+  const [otpPreview, setOtpPreview] = useState('');
   const [syncLoading, setSyncLoading] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [syncedOrders, setSyncedOrders] = useState<SyncedOrderSummary[]>([]);
@@ -105,27 +108,59 @@ export default function Header() {
     };
   }, [drawerOpen, customerProfile.email]);
 
-  const handleConnectEmail = async (overrideEmail?: string) => {
+  const handleRequestOtp = async (overrideEmail?: string) => {
     const targetEmail = (overrideEmail ?? emailInput).trim().toLowerCase();
-    if (!targetEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(targetEmail)) {
-      setSyncMessage(
-        lang === 'hi'
-          ? 'कृपया सही Gmail / ईमेल आईडी दर्ज करें'
-          : 'Please enter a valid Gmail or email address'
-      );
-      return;
-    }
-
     setSyncLoading(true);
     setSyncMessage(null);
     try {
-      const res = await fetch(`/api/account?email=${encodeURIComponent(targetEmail)}`, {
-        cache: 'no-store',
+      const res = await fetch('/api/account', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'send_otp', email: targetEmail }),
       });
       const data = await res.json();
       if (!res.ok || !data?.success) {
-        setSyncMessage(data?.error || 'Could not connect email');
-        setSyncLoading(false);
+        setSyncMessage(
+          (lang === 'hi' && data?.error_hi ? data.error_hi : data?.error) ||
+            'Please enter a genuine personal email address.'
+        );
+        return;
+      }
+      setEmailInput(targetEmail);
+      setOtpPendingEmail(targetEmail);
+      setOtpPreview(data.otpPreview || '');
+      if (targetEmail === 'priya.sharma@gmail.com') {
+        setOtpInput('100108');
+      }
+      setSyncMessage(
+        lang === 'hi'
+          ? `6-अंकों का OTP ${targetEmail} पर भेजा गया (कोड: ${data.otpPreview})`
+          : `6-digit OTP sent to ${targetEmail} (Inbox Code: ${data.otpPreview})`
+      );
+    } catch {
+      setSyncMessage(lang === 'hi' ? 'OTP भेजने में समस्या हुई' : 'Unable to send OTP right now');
+    } finally {
+      setSyncLoading(false);
+    }
+  };
+
+  const handleVerifyOtp = async () => {
+    if (!otpPendingEmail || otpInput.length !== 6) return;
+    setSyncLoading(true);
+    setSyncMessage(null);
+    try {
+      const res = await fetch('/api/account', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'verify_otp',
+          email: otpPendingEmail,
+          otp: otpInput,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        setSyncMessage(data?.error || 'Invalid OTP code');
         return;
       }
 
@@ -136,41 +171,26 @@ export default function Header() {
 
       setWishlist(mergedWishlist);
       setCustomerProfile({
-        email: targetEmail,
+        email: otpPendingEmail,
         name: serverProfile.name || customerProfile.name || '',
         phone: serverProfile.phone || customerProfile.phone || '',
         pincode: serverProfile.pincode || customerProfile.pincode || '',
-        cityState: serverProfile.cityState || customerProfile.cityState || '',
+        cityState: serverProfile.cityState || customerProfile.cityState || 'Jaipur, Rajasthan',
         address: serverProfile.address || customerProfile.address || '',
+        emailVerified: true,
         connectedAt: new Date().toISOString(),
       });
-      setEmailInput(targetEmail);
       setSyncedOrders(Array.isArray(data.orders) ? data.orders : []);
-
-      // Push merged wishlist back to server account
-      await fetch('/api/account', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: targetEmail,
-          name: serverProfile.name || customerProfile.name || '',
-          phone: serverProfile.phone || customerProfile.phone || '',
-          pincode: serverProfile.pincode || customerProfile.pincode || '',
-          cityState: serverProfile.cityState || customerProfile.cityState || '',
-          address: serverProfile.address || customerProfile.address || '',
-          wishlist: mergedWishlist,
-        }),
-      }).catch(() => {});
-
+      setOtpPendingEmail('');
+      setOtpInput('');
+      setOtpPreview('');
       setSyncMessage(
         lang === 'hi'
-          ? 'Gmail अकाउंट जुड़ गया — पसंदीदा, ऑर्डर और पता सिंक हो गए'
-          : 'Gmail connected — Favourites, Orders & Address synced'
+          ? 'ईमेल OTP वेरिफाई हो गया — ऑर्डर, पता और पसंदीदा लोड हो गए'
+          : 'Email verified via OTP — Orders, Address & Favourites synced'
       );
     } catch {
-      setSyncMessage(
-        lang === 'hi' ? 'कनेक्ट करने में समस्या हुई' : 'Unable to sync right now'
-      );
+      setSyncMessage('Unable to verify OTP right now');
     } finally {
       setSyncLoading(false);
     }
@@ -218,18 +238,33 @@ export default function Header() {
             </div>
           </Link>
 
-          <div className="flex items-center gap-3">
-            {/* Connected Gmail Pill (Desktop indicator) */}
-            {customerProfile.email && (
-              <button
-                type="button"
-                onClick={() => setDrawerOpen(true)}
-                className="hidden sm:inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-medium hover:bg-emerald-100 transition"
-              >
-                <span className="w-2 h-2 rounded-full bg-emerald-600" />
-                <span className="max-w-[180px] truncate">{customerProfile.email}</span>
-              </button>
-            )}
+          <div className="flex items-center gap-2.5 sm:gap-3">
+            {/* Clicking the Email / Profile Pill in Header Opens the Full User Profile (/profile) */}
+            <Link
+              href="/profile"
+              data-testid="header-profile-link"
+              className={`inline-flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold transition ${
+                customerProfile.email
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-950 hover:bg-emerald-100'
+                  : 'bg-white border-stone-300 text-stone-800 hover:border-stone-900'
+              }`}
+              title={
+                lang === 'hi'
+                  ? 'प्रोफ़ाइल, ऑर्डर डिटेल और पता खोलें'
+                  : 'Open My Profile, Order History & Saved Address'
+              }
+            >
+              <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.9}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+              </svg>
+              <span className="max-w-[130px] sm:max-w-[180px] truncate">
+                {customerProfile.email
+                  ? customerProfile.email
+                  : lang === 'hi'
+                    ? 'प्रोफ़ाइल'
+                    : 'Profile'}
+              </span>
+            </Link>
 
             {/* 3-Lines Hamburger Button — Opens Track, Order Details, Favourites, Language, Gmail Sync & Bag */}
             <button
@@ -323,14 +358,18 @@ export default function Header() {
                   {customerProfile.email ? (
                     <div className="mt-3 space-y-3">
                       <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-200">
-                        <div className="min-w-0">
+                        <Link
+                          href="/profile"
+                          onClick={() => setDrawerOpen(false)}
+                          className="min-w-0 flex-1 hover:underline"
+                        >
                           <span className="block text-[10px] font-bold uppercase tracking-wider text-emerald-800">
-                            {t('accountConnectedLabel')}
+                            {t('accountConnectedLabel')} — TAP TO OPEN PROFILE
                           </span>
                           <span className="block text-xs font-semibold text-stone-900 truncate">
                             {customerProfile.email}
                           </span>
-                        </div>
+                        </Link>
                         <button
                           type="button"
                           onClick={() => {
@@ -344,6 +383,16 @@ export default function Header() {
                           {t('disconnectAccountBtn')}
                         </button>
                       </div>
+
+                      <Link
+                        href="/profile"
+                        onClick={() => setDrawerOpen(false)}
+                        className="block w-full text-center py-2.5 px-3 rounded-xl bg-stone-950 text-amber-300 text-xs font-bold uppercase tracking-wider hover:bg-stone-800 transition"
+                      >
+                        {lang === 'hi'
+                          ? 'पूरी प्रोफ़ाइल, ऑर्डर और पता खोलें'
+                          : 'Open Full Profile, Orders & Address'}
+                      </Link>
 
                       {/* Saved Address & Phone Summary */}
                       <div className="rounded-xl bg-stone-50 border border-stone-200 p-3 text-xs space-y-1">
@@ -468,24 +517,60 @@ export default function Header() {
                         <button
                           type="button"
                           disabled={syncLoading}
-                          onClick={() => handleConnectEmail()}
+                          onClick={() => handleRequestOtp()}
                           className="px-3.5 py-2 rounded-xl bg-stone-950 text-amber-300 text-xs font-bold uppercase tracking-wider hover:bg-stone-800 transition shrink-0 disabled:opacity-50"
                         >
-                          {syncLoading ? '...' : lang === 'hi' ? 'जोड़ें' : 'Sync'}
+                          {syncLoading ? '...' : lang === 'hi' ? 'OTP भेजें' : 'Send OTP'}
                         </button>
                       </div>
+
+                      {otpPendingEmail && (
+                        <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 space-y-2">
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span className="font-semibold text-stone-800">
+                              6-Digit OTP ({otpPendingEmail})
+                            </span>
+                            {otpPreview && (
+                              <span className="font-mono font-bold text-amber-950">
+                                Code: {otpPreview}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              maxLength={6}
+                              value={otpInput}
+                              onChange={(e) =>
+                                setOtpInput(e.target.value.replace(/\D/g, '').slice(0, 6))
+                              }
+                              placeholder="Enter 6-digit OTP"
+                              className="flex-1 px-3 py-1.5 rounded-lg border border-stone-300 bg-white font-mono text-xs font-bold tracking-widest"
+                            />
+                            <button
+                              type="button"
+                              disabled={syncLoading || otpInput.length !== 6}
+                              onClick={handleVerifyOtp}
+                              className="px-3 py-1.5 rounded-lg bg-emerald-800 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50"
+                            >
+                              Verify
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
                       <button
                         type="button"
-                        onClick={() => handleConnectEmail('priya.sharma@gmail.com')}
+                        onClick={() => handleRequestOtp('priya.sharma@gmail.com')}
                         className="w-full text-left px-3 py-2 rounded-xl border border-amber-300/80 bg-amber-50/70 hover:bg-amber-100/70 transition text-[11px] text-amber-950 flex items-center justify-between"
                       >
                         <span>
                           {lang === 'hi'
-                            ? 'प्रिया शर्मा (priya.sharma@gmail.com) से सिंक करें'
-                            : 'Try Customer Account: priya.sharma@gmail.com'}
+                            ? 'प्रिया शर्मा (priya.sharma@gmail.com) OTP वेरिफाई करें'
+                            : 'Verify Sample Patron: priya.sharma@gmail.com'}
                         </span>
                         <span className="font-bold underline">
-                          {lang === 'hi' ? '1-क्लिक' : '1-Tap'}
+                          {lang === 'hi' ? 'OTP: 100108' : 'OTP: 100108'}
                         </span>
                       </button>
                     </div>

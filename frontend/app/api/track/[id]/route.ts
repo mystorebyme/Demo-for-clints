@@ -1,11 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
-import {
-  findServerOrderByOrderOrTrackingId,
-  maskEmail,
-  maskPhone,
-} from '../../../../lib/serverStore';
+import { findServerOrderByOrderOrTrackingId } from '../../../../lib/serverStore';
 
 export const dynamic = 'force-dynamic';
+
+function extractSafeRegionHub(rawAddress: string): string {
+  const pinMatch = (rawAddress || '').match(/(\d{6})/);
+  const maskedPin = pinMatch ? `PIN ${pinMatch[1].slice(0, 3)}***` : 'Regional Hub';
+  if (/jaipur/i.test(rawAddress)) return `Jaipur Hub, Rajasthan (${maskedPin})`;
+  if (/udaipur/i.test(rawAddress)) return `Udaipur Hub, Rajasthan (${maskedPin})`;
+  if (/jodhpur/i.test(rawAddress)) return `Jodhpur Hub, Rajasthan (${maskedPin})`;
+  if (/rajasthan/i.test(rawAddress)) return `Rajasthan Sorting Hub (${maskedPin})`;
+  return `Destination Regional Hub (${maskedPin})`;
+}
+
+function scrubPiiFromNote(note: string): string {
+  return String(note || '')
+    .replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, '[Protected Email]')
+    .replace(/\b[6-9]\d{9}\b/g, '[Protected Phone]');
+}
 
 export async function GET(
   req: NextRequest,
@@ -16,14 +28,12 @@ export async function GET(
     return NextResponse.json(
       {
         success: false,
-        error: 'Please enter the confidential Tracking ID sent to your email (e.g. TRK-KC-...)',
+        error: 'Please enter the 12-digit Tracking ID sent to your email (e.g. TRK-KC-...)',
       },
       { status: 400 }
     );
   }
 
-  // Anti-enumeration guard: unless it's a confidential TRK-KC-... token or the showcase seed ORDDEMO1001,
-  // require phone last-4 verification query param (?phoneLast4=XXXX) when searching by raw Order ID.
   const isTrackingToken = id.startsWith('TRK-KC-');
   const phoneLast4 = (req.nextUrl.searchParams.get('phone') || '').replace(/\D/g, '').slice(-4);
 
@@ -32,7 +42,7 @@ export async function GET(
       {
         success: false,
         error:
-          'For your privacy, public tracking requires your confidential Tracking ID (TRK-KC-...) sent to your email.',
+          'For your privacy, public tracking requires your Tracking ID (TRK-KC-...) sent to your email.',
       },
       { status: 403 }
     );
@@ -43,7 +53,7 @@ export async function GET(
     return NextResponse.json(
       {
         success: false,
-        error: 'No shipment found matching this confidential Tracking ID. Please check your email receipt.',
+        error: 'No shipment found matching this Tracking ID. Please check your email receipt.',
       },
       { status: 404 }
     );
@@ -53,34 +63,32 @@ export async function GET(
     return NextResponse.json(
       {
         success: false,
-        error: 'Phone verification did not match this order.',
+        error: 'Verification did not match this shipment.',
       },
       { status: 403 }
     );
   }
 
+  // Strictly NO personal details (no name, no phone, no email, no street address) exposed on public tracking
   return NextResponse.json({
     success: true,
     orderId: order.order_id,
     trackingId: order.tracking_id,
-    invoiceNumber: order.invoice_number,
     paymentStatus: order.status,
     fulfillmentStatus: order.fulfillment_status,
     courierName: order.courier_name,
     estimatedDelivery: order.estimated_delivery,
-    trackingHistory: order.tracking_history || [],
-    customerName: order.customer_name,
-    // Mask sensitive PII on public tracking endpoint to prevent data leaks
-    customerEmail: maskEmail(order.customer_email),
-    phone: maskPhone(order.phone),
-    address: order.address,
-    subtotalPaise: order.subtotal_paise,
-    discountPaise: order.discount_paise,
-    shippingPaise: order.shipping_paise,
-    couponCode: order.coupon_code,
-    gstPaise: order.gst_paise,
-    amountPaise: order.amount_paise,
-    items: order.items,
+    destinationHub: extractSafeRegionHub(order.address),
+    trackingHistory: (order.tracking_history || []).map((ev) => ({
+      ...ev,
+      note: scrubPiiFromNote(ev.note),
+    })),
+    items: (order.items || []).map((item) => ({
+      id: item.id,
+      name: item.name,
+      qty: item.qty,
+      size: item.size,
+    })),
     createdAt: order.created_at,
     updatedAt: order.updated_at,
   });

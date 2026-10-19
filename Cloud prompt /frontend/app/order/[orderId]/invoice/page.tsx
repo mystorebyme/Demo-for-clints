@@ -75,7 +75,7 @@ export default function InvoicePage({ params }: { params: { orderId: string } })
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-stone-100 text-stone-600 text-sm">
-        Generating official GST Tax Invoice...
+        Generating GST Tax Invoice...
       </div>
     );
   }
@@ -84,7 +84,7 @@ export default function InvoicePage({ params }: { params: { orderId: string } })
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-stone-100 p-6 text-center">
         <h1 className="text-xl font-bold text-stone-900 mb-2">Invoice Not Found</h1>
-        <Link href="/" className="px-4 py-2 rounded-xl bg-rose-900 text-white text-xs font-bold">
+        <Link href="/" className="px-4 py-2 rounded-xl bg-stone-950 text-white text-xs font-bold">
           Return to Store
         </Link>
       </div>
@@ -93,349 +93,476 @@ export default function InvoicePage({ params }: { params: { orderId: string } })
 
   const sp: StoreProfileData = order.storeProfile || {
     storeName: 'ZARIYA JAIPUR — ROYAL ETHNIC HOUSE',
-    legalName: 'Zariya Heritage Apparels Pvt. Ltd.',
-    gstin: '08AABCZ9481K1Z4',
-    pan: 'AABCZ9481K',
+    legalName: 'Zariya Heritage Craft Pvt. Ltd.',
+    gstin: '08AABCK7412R1Z5',
+    pan: 'AABCK7412R',
     stateName: 'Rajasthan',
     stateCode: '08',
-    address: 'Plot 14, Johari Bazar Heritage Arcade, Near Hawa Mahal, Jaipur, Rajasthan - 302002',
+    address: 'Showroom 14, Heritage Arcade, MI Road, Jaipur, Rajasthan – 302001',
     supportEmail: 'concierge@zariyajaipur.in',
-    supportPhone: '+91-98765-43210',
+    supportPhone: '+91-9876543210',
     invoicePrefix: 'INV-KC-2026',
     freeShippingThresholdPaise: 99900,
-    shippingChargePaise: 7900,
+    shippingChargePaise: 0,
     gstRatePercent: 5,
-    signatoryName: 'Authorized Signatory — Zariya Heritage Apparels Pvt. Ltd.',
+    signatoryName: 'For Zariya Heritage Craft Pvt. Ltd. — Authorized Signatory',
   };
 
   const isIntra = order.supplyType !== 'INTER_STATE';
   const gstRate = sp.gstRatePercent || 5;
   const halfRate = (gstRate / 2).toFixed(1);
   const shippingPaise = order.shippingPaise || 0;
+  const grossSubtotal = order.subtotalPaise || order.amountPaise;
+  const totalDiscount = order.discountPaise || 0;
+
+  // Build HSN Summary buckets (like Myntra / Reliance / Tally ERP tax invoices)
+  const hsnSummaryMap = new Map<
+    string,
+    { hsn: string; qty: number; taxablePaise: number; cgstPaise: number; sgstPaise: number; igstPaise: number; totalTaxPaise: number }
+  >();
+
+  const computedLineRows = (order.items || []).map((item, idx) => {
+    const grossLine = item.price_paise * item.qty;
+    const itemDiscountShare =
+      grossSubtotal > 0 ? Math.round((grossLine / grossSubtotal) * totalDiscount) : 0;
+    const netLineInclusive = Math.max(0, grossLine - itemDiscountShare);
+    const lineTaxable = Math.round((netLineInclusive * 100) / (100 + gstRate));
+    const lineTax = netLineInclusive - lineTaxable;
+    const lineCgst = isIntra ? Math.round(lineTax / 2) : 0;
+    const lineSgst = isIntra ? lineTax - lineCgst : 0;
+    const lineIgst = isIntra ? 0 : lineTax;
+    const hsn = item.hsn_code || '6204';
+
+    const cur = hsnSummaryMap.get(hsn) || {
+      hsn,
+      qty: 0,
+      taxablePaise: 0,
+      cgstPaise: 0,
+      sgstPaise: 0,
+      igstPaise: 0,
+      totalTaxPaise: 0,
+    };
+    cur.qty += item.qty;
+    cur.taxablePaise += lineTaxable;
+    cur.cgstPaise += lineCgst;
+    cur.sgstPaise += lineSgst;
+    cur.igstPaise += lineIgst;
+    cur.totalTaxPaise += lineTax;
+    hsnSummaryMap.set(hsn, cur);
+
+    return {
+      idx: idx + 1,
+      sku: `ZJ-${String(item.id).padStart(3, '0')}`,
+      name: item.name,
+      size: item.size,
+      hsn,
+      qty: item.qty,
+      unitGrossPaise: item.price_paise,
+      grossLine,
+      itemDiscountShare,
+      lineTaxable,
+      lineCgst,
+      lineSgst,
+      lineIgst,
+      lineTax,
+      netLineInclusive,
+    };
+  });
+
+  const hsnSummaryRows = Array.from(hsnSummaryMap.values());
+  const placeOfSupply = isIntra
+    ? `${sp.stateCode} — ${sp.stateName} (Intra-State)`
+    : 'Inter-State Supply (IGST)';
 
   return (
-    <div className="min-h-screen bg-stone-200 py-6 sm:py-10 px-4 print:bg-white print:p-0">
+    <div className="min-h-screen bg-stone-200 py-6 sm:py-10 px-3 sm:px-6 print:bg-white print:p-0">
       {/* Top Action Bar (Hidden when printing) */}
-      <div className="max-w-4xl mx-auto mb-5 flex flex-wrap items-center justify-between gap-3 print:hidden">
-        <div className="flex items-center gap-2">
+      <div className="max-w-5xl mx-auto mb-5 flex flex-wrap items-center justify-between gap-3 print:hidden">
+        <div className="flex flex-wrap items-center gap-2">
           <Link
             href={`/order/${order.orderId}`}
-            className="px-4 py-2 rounded-xl bg-white hover:bg-stone-100 text-stone-800 border border-stone-300 text-xs font-bold shadow-sm transition"
+            className="px-4 py-2 rounded-lg bg-white hover:bg-stone-100 text-stone-900 border border-stone-300 text-xs font-bold shadow-xs transition"
           >
             Back to Order {order.orderId}
           </Link>
-          {order.trackingId && (
-            <Link
-              href={`/track?id=${encodeURIComponent(order.trackingId)}`}
-              className="px-4 py-2 rounded-xl bg-white hover:bg-stone-100 text-rose-900 border border-stone-300 text-xs font-bold shadow-sm transition"
-            >
-              Track Shipment ({order.trackingId})
-            </Link>
-          )}
+          <Link
+            href="/profile"
+            className="px-4 py-2 rounded-lg bg-white hover:bg-stone-100 text-stone-900 border border-stone-300 text-xs font-bold shadow-xs transition"
+          >
+            My Profile & Orders
+          </Link>
         </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => window.print()}
-            className="px-5 py-2.5 rounded-xl bg-rose-900 hover:bg-rose-950 text-white text-xs sm:text-sm font-extrabold shadow-md transition flex items-center gap-2"
-          >
-            <span>Print / Save GST Invoice as PDF</span>
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => window.print()}
+          className="px-5 py-2.5 rounded-lg bg-stone-950 hover:bg-stone-800 text-amber-300 text-xs font-bold uppercase tracking-wider shadow-sm transition"
+        >
+          Print / Download Official Tax Invoice (PDF)
+        </button>
       </div>
 
-      {/* Printable A4 Tax Invoice Container */}
+      {/* Enterprise A4 GST Tax Invoice Sheet (Tally / Myntra / Reliance Retail Standard) */}
       <div
         id="gst-tax-invoice"
-        className="max-w-4xl mx-auto bg-white rounded-2xl print:rounded-none border border-stone-300 print:border-stone-800 shadow-lg print:shadow-none p-6 sm:p-10 text-stone-900"
+        className="max-w-5xl mx-auto bg-white border-2 border-stone-900 shadow-lg print:shadow-none text-stone-950 text-[11px] leading-snug"
       >
-        {/* Header Banner */}
-        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-6 border-b-2 border-stone-900 pb-6">
-          <div>
-            <div className="inline-block px-2.5 py-0.5 rounded bg-rose-900 text-amber-200 text-[10px] font-extrabold uppercase tracking-widest mb-2">
-              ORIGINAL FOR RECIPIENT • TAX INVOICE (RULE 46 CGST RULES)
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-serif font-extrabold text-rose-950 tracking-tight uppercase">
-              {sp.storeName}
+        {/* Top Statutory Title Bar */}
+        <div className="border-b-2 border-stone-900 bg-stone-100 px-4 py-2 flex flex-wrap items-center justify-between gap-2">
+          <span className="font-extrabold uppercase tracking-[0.16em] text-xs">
+            TAX INVOICE (ISSUED UNDER SECTION 31 OF CGST ACT, 2017 READ WITH RULE 46 OF CGST RULES)
+          </span>
+          <span className="font-mono font-bold uppercase text-[10px] border border-stone-900 px-2 py-0.5 bg-white">
+            ORIGINAL FOR RECIPIENT
+          </span>
+        </div>
+
+        {/* Row 1: Sold By (Seller) vs Tax Invoice Metadata */}
+        <div className="grid grid-cols-1 md:grid-cols-12 border-b border-stone-900">
+          <div className="md:col-span-7 p-4 border-b md:border-b-0 md:border-r border-stone-900 space-y-1">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-stone-500">
+              SOLD BY / REGISTERED SUPPLIER:
+            </p>
+            <h1 className="text-base font-extrabold uppercase tracking-wide text-stone-950">
+              {sp.legalName}
             </h1>
-            <p className="text-xs font-bold text-stone-700 mt-0.5">{sp.legalName}</p>
-            <p className="text-xs text-stone-600 mt-1">{sp.address}</p>
-            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs font-mono text-stone-800 mt-2">
-              <span>
+            <p className="font-semibold text-stone-800">Brand: {sp.storeName}</p>
+            <p className="text-stone-700">{sp.address}</p>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 pt-2 font-mono text-[11px]">
+              <div>
                 <strong>GSTIN:</strong> {sp.gstin}
-              </span>
-              <span>
+              </div>
+              <div>
                 <strong>PAN:</strong> {sp.pan}
-              </span>
-              <span>
+              </div>
+              <div>
+                <strong>CIN:</strong> U18101RJ2021PTC074812
+              </div>
+              <div>
                 <strong>State Code:</strong> {sp.stateCode} ({sp.stateName})
-              </span>
+              </div>
             </div>
-            <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-stone-600 mt-1">
-              <span>
-                <strong>Email:</strong> {sp.supportEmail}
-              </span>
-              <span>
-                <strong>Phone:</strong> {sp.supportPhone}
-              </span>
-            </div>
+            <p className="text-stone-600 pt-1">
+              <strong>Customer Care:</strong> {sp.supportEmail} | {sp.supportPhone}
+            </p>
           </div>
 
-          <div className="sm:text-right bg-stone-50 p-4 rounded-xl border border-stone-200 min-w-[250px]">
-            <p className="text-[11px] uppercase tracking-wider font-extrabold text-stone-400">
-              GST Invoice Number
-            </p>
-            <p className="text-base font-mono font-extrabold text-stone-900">
-              {order.invoiceNumber}
-            </p>
-            <div className="mt-2 pt-2 border-t border-stone-200 text-xs space-y-1">
-              <p>
-                <span className="text-stone-500">Order ID:</span>{' '}
-                <strong className="font-mono">{order.orderId}</strong>
-              </p>
-              <p>
-                <span className="text-stone-500">Invoice Date:</span>{' '}
-                <strong>
-                  {new Date(order.createdAt).toLocaleDateString('en-IN', {
-                    day: '2-digit',
-                    month: 'short',
-                    year: 'numeric',
-                  })}
-                </strong>
-              </p>
-              <p>
-                <span className="text-stone-500">Supply Regime:</span>{' '}
-                <strong>{order.supplyType}</strong>
-              </p>
-              <p>
-                <span className="text-stone-500">Payment Status:</span>{' '}
-                <strong
-                  className={
-                    order.status === 'CONFIRMED' || order.status === 'PAID'
-                      ? 'text-emerald-700'
-                      : 'text-amber-700'
-                  }
-                >
-                  {order.status}
-                </strong>
-              </p>
-              {order.paymentId && (
-                <p>
-                  <span className="text-stone-500">Payment Ref:</span>{' '}
-                  <strong className="font-mono">{order.paymentId}</strong>
-                </p>
-              )}
-              {order.trackingId && (
-                <p>
-                  <span className="text-stone-500">Tracking ID:</span>{' '}
-                  <strong className="font-mono text-rose-900">{order.trackingId}</strong>
-                </p>
-              )}
+          <div className="md:col-span-5 p-4 bg-stone-50/60 space-y-1.5 font-mono">
+            <div className="flex justify-between border-b border-stone-300 pb-1">
+              <span className="font-sans text-stone-600 font-semibold">Tax Invoice No:</span>
+              <strong className="text-xs text-stone-950">{order.invoiceNumber}</strong>
+            </div>
+            <div className="flex justify-between border-b border-stone-300 pb-1">
+              <span className="font-sans text-stone-600 font-semibold">Invoice Date:</span>
+              <strong>
+                {new Date(order.createdAt).toLocaleDateString('en-IN', {
+                  day: '2-digit',
+                  month: 'short',
+                  year: 'numeric',
+                })}
+              </strong>
+            </div>
+            <div className="flex justify-between border-b border-stone-300 pb-1">
+              <span className="font-sans text-stone-600 font-semibold">Order Reference:</span>
+              <strong>{order.orderId}</strong>
+            </div>
+            <div className="flex justify-between border-b border-stone-300 pb-1">
+              <span className="font-sans text-stone-600 font-semibold">Place of Supply:</span>
+              <strong className="font-sans">{placeOfSupply}</strong>
+            </div>
+            <div className="flex justify-between border-b border-stone-300 pb-1">
+              <span className="font-sans text-stone-600 font-semibold">Reverse Charge (RCM):</span>
+              <strong className="font-sans">No</strong>
+            </div>
+            <div className="flex justify-between">
+              <span className="font-sans text-stone-600 font-semibold">Payment Status:</span>
+              <strong className="text-emerald-800">{order.status}</strong>
             </div>
           </div>
         </div>
 
-        {/* Billing & Shipping Details */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 py-6 border-b border-stone-200 text-xs">
-          <div className="bg-stone-50/70 p-4 rounded-xl border border-stone-200">
-            <h2 className="font-extrabold uppercase tracking-wider text-stone-400 text-[11px] mb-1.5">
-              Billed & Shipped To (Consignee)
-            </h2>
-            <p className="text-sm font-bold text-stone-900">{order.customerName}</p>
-            <p className="text-stone-700 mt-1 leading-relaxed">{order.address}</p>
-            <div className="mt-2 pt-2 border-t border-stone-200/80 space-y-0.5">
-              <p className="text-stone-800 font-semibold">Phone: +91 {order.phone}</p>
-              {order.customerEmail && (
-                <p className="text-stone-700">Email: {order.customerEmail}</p>
-              )}
-            </div>
+        {/* Row 2: Billed To / Shipped To / Logistics Metadata */}
+        <div className="grid grid-cols-1 md:grid-cols-12 border-b-2 border-stone-900">
+          <div className="md:col-span-4 p-4 border-b md:border-b-0 md:border-r border-stone-900 space-y-1">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-stone-500">
+              DETAILS OF RECEIVER (BILLED TO):
+            </p>
+            <p className="font-extrabold text-xs text-stone-950">{order.customerName}</p>
+            <p className="text-stone-700 leading-relaxed">{order.address}</p>
+            <p className="font-mono pt-1">
+              <strong>Phone:</strong> +91-{order.phone}
+            </p>
+            {order.customerEmail && (
+              <p className="font-mono truncate">
+                <strong>Email:</strong> {order.customerEmail}
+              </p>
+            )}
           </div>
 
-          <div className="bg-stone-50/70 p-4 rounded-xl border border-stone-200">
-            <h2 className="font-extrabold uppercase tracking-wider text-stone-400 text-[11px] mb-1.5">
-              Tax & Dispatch Metadata
-            </h2>
-            <p className="text-stone-700">
-              <strong>Payment Mode:</strong> Direct UPI Instant Settlement
+          <div className="md:col-span-4 p-4 border-b md:border-b-0 md:border-r border-stone-900 space-y-1">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-stone-500">
+              DETAILS OF CONSIGNEE (SHIPPED TO):
             </p>
-            <p className="text-stone-700 mt-1">
-              <strong>Tax Regime:</strong>{' '}
-              {isIntra
-                ? `Intra-State Supply (CGST ${halfRate}% + SGST ${halfRate}%)`
-                : `Inter-State Supply (IGST ${gstRate}.0%)`}
+            <p className="font-extrabold text-xs text-stone-950">{order.customerName}</p>
+            <p className="text-stone-700 leading-relaxed">{order.address}</p>
+            <p className="pt-1">
+              <strong>Place of Delivery:</strong> {placeOfSupply}
             </p>
-            <p className="text-stone-700 mt-1">
-              <strong>Courier Partner:</strong>{' '}
-              {order.courierName || 'BlueDart Royal Priority Air'}
+          </div>
+
+          <div className="md:col-span-4 p-4 space-y-1">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-stone-500">
+              PAYMENT & DISPATCH PARTICULARS:
             </p>
-            <p className="text-stone-700 mt-1">
-              <strong>Reverse Charge Applicable:</strong> No
+            <p>
+              <strong>Payment Method:</strong> Prepaid UPI Settlement
             </p>
+            <p className="font-mono">
+              <strong>UTR / Payment Ref:</strong> {order.paymentId || 'UPI-VERIFIED'}
+            </p>
+            <p>
+              <strong>Logistics Partner:</strong> {order.courierName || 'BlueDart Priority Air'}
+            </p>
+            <p className="font-mono">
+              <strong>AWB Tracking ID:</strong> {order.trackingId || 'Pending Dispatch'}
+            </p>
+            {order.couponCode && (
+              <p className="font-mono">
+                <strong>Promo Code Applied:</strong> {order.couponCode}
+              </p>
+            )}
           </div>
         </div>
 
-        {/* Line Items Table with HSN & GST Split */}
-        <div className="py-6 overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs">
+        {/* Row 3: Enterprise 10-Column Itemized Tax Table */}
+        <div className="overflow-x-auto border-b-2 border-stone-900">
+          <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="border-y-2 border-stone-900 bg-stone-100 text-stone-800 uppercase text-[11px]">
-                <th className="py-2.5 px-2 font-extrabold">#</th>
-                <th className="py-2.5 px-2 font-extrabold">Item Description</th>
-                <th className="py-2.5 px-2 font-extrabold text-center">HSN/SAC</th>
-                <th className="py-2.5 px-2 font-extrabold text-center">Size</th>
-                <th className="py-2.5 px-2 font-extrabold text-center">Qty</th>
-                <th className="py-2.5 px-2 font-extrabold text-right">Unit Price</th>
-                <th className="py-2.5 px-2 font-extrabold text-right">Taxable Val</th>
-                <th className="py-2.5 px-2 font-extrabold text-right">
-                  {isIntra ? `CGST+SGST (${gstRate}%)` : `IGST (${gstRate}%)`}
+              <tr className="bg-stone-100 border-b border-stone-900 text-[10px] uppercase font-extrabold text-stone-900">
+                <th className="py-2 px-2 border-r border-stone-400 text-center w-8">S.No</th>
+                <th className="py-2 px-2 border-r border-stone-400">SKU Code</th>
+                <th className="py-2 px-2 border-r border-stone-400">
+                  Product Description & Size
                 </th>
-                <th className="py-2.5 px-2 font-extrabold text-right">Line Total</th>
+                <th className="py-2 px-2 border-r border-stone-400 text-center">HSN/SAC</th>
+                <th className="py-2 px-2 border-r border-stone-400 text-center">Qty</th>
+                <th className="py-2 px-2 border-r border-stone-400 text-right">Gross Amt</th>
+                <th className="py-2 px-2 border-r border-stone-400 text-right">Discount</th>
+                <th className="py-2 px-2 border-r border-stone-400 text-right">Taxable Value</th>
+                <th className="py-2 px-2 border-r border-stone-400 text-right">
+                  {isIntra ? `CGST (${halfRate}%) + SGST (${halfRate}%)` : `IGST (${gstRate}%)`}
+                </th>
+                <th className="py-2 px-2 text-right">Net Total (INR)</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-stone-200">
-              {order.items?.map((item, idx) => {
-                const lineTotal = item.price_paise * item.qty;
-                const lineTaxable = Math.round((lineTotal * 100) / (100 + gstRate));
-                const lineGst = lineTotal - lineTaxable;
-                return (
-                  <tr key={`${item.id}-${idx}`} className="text-stone-800">
-                    <td className="py-3 px-2 font-mono text-stone-500">{idx + 1}</td>
-                    <td className="py-3 px-2 font-bold text-stone-900">
-                      {item.name}
-                      <span className="block text-[10px] font-mono text-stone-500">
-                        SKU: ZJ-{item.id}
-                      </span>
-                    </td>
-                    <td className="py-3 px-2 text-center font-mono text-stone-600">
-                      {item.hsn_code || '6204'}
-                    </td>
-                    <td className="py-3 px-2 text-center font-semibold">{item.size}</td>
-                    <td className="py-3 px-2 text-center font-bold">{item.qty}</td>
-                    <td className="py-3 px-2 text-right font-mono">{rupees(item.price_paise)}</td>
-                    <td className="py-3 px-2 text-right font-mono">{rupees(lineTaxable)}</td>
-                    <td className="py-3 px-2 text-right font-mono">{rupees(lineGst)}</td>
-                    <td className="py-3 px-2 text-right font-mono font-bold text-stone-900">
-                      {rupees(lineTotal)}
-                    </td>
-                  </tr>
-                );
-              })}
+            <tbody className="divide-y divide-stone-300 font-mono text-[11px]">
+              {computedLineRows.map((row) => (
+                <tr key={`${row.sku}-${row.idx}`}>
+                  <td className="py-2.5 px-2 border-r border-stone-300 text-center">{row.idx}</td>
+                  <td className="py-2.5 px-2 border-r border-stone-300 font-bold">{row.sku}</td>
+                  <td className="py-2.5 px-2 border-r border-stone-300 font-sans">
+                    <span className="font-bold text-stone-950 block">{row.name}</span>
+                    <span className="text-[10px] text-stone-600">
+                      Size / Variant: <strong>{row.size}</strong> | Unit Price:{' '}
+                      {rupees(row.unitGrossPaise)}
+                    </span>
+                  </td>
+                  <td className="py-2.5 px-2 border-r border-stone-300 text-center">{row.hsn}</td>
+                  <td className="py-2.5 px-2 border-r border-stone-300 text-center font-bold">
+                    {row.qty}
+                  </td>
+                  <td className="py-2.5 px-2 border-r border-stone-300 text-right">
+                    {rupees(row.grossLine)}
+                  </td>
+                  <td className="py-2.5 px-2 border-r border-stone-300 text-right text-emerald-800">
+                    {row.itemDiscountShare > 0 ? `- ${rupees(row.itemDiscountShare)}` : '₹0'}
+                  </td>
+                  <td className="py-2.5 px-2 border-r border-stone-300 text-right">
+                    {rupees(row.lineTaxable)}
+                  </td>
+                  <td className="py-2.5 px-2 border-r border-stone-300 text-right">
+                    {isIntra
+                      ? `${rupees(row.lineCgst)} + ${rupees(row.lineSgst)}`
+                      : rupees(row.lineIgst)}
+                  </td>
+                  <td className="py-2.5 px-2 text-right font-extrabold text-stone-950">
+                    {rupees(row.netLineInclusive)}
+                  </td>
+                </tr>
+              ))}
 
-              {/* Shipping Charge Line if applicable */}
               {shippingPaise > 0 && (
-                <tr className="text-stone-800 bg-stone-50/60">
-                  <td className="py-2.5 px-2 font-mono text-stone-500">
-                    {(order.items?.length || 0) + 1}
+                <tr className="bg-stone-50/70">
+                  <td className="py-2 px-2 border-r border-stone-300 text-center">
+                    {computedLineRows.length + 1}
                   </td>
-                  <td className="py-2.5 px-2 font-semibold text-stone-800">
-                    Insured Express Courier & Packaging Charges
+                  <td className="py-2 px-2 border-r border-stone-300 font-bold">SAC-9968</td>
+                  <td className="py-2 px-2 border-r border-stone-300 font-sans font-semibold">
+                    Express Courier & Insured Handling Charges
                   </td>
-                  <td className="py-2.5 px-2 text-center font-mono text-stone-600">9968</td>
-                  <td className="py-2.5 px-2 text-center">—</td>
-                  <td className="py-2.5 px-2 text-center">1</td>
-                  <td className="py-2.5 px-2 text-right font-mono">{rupees(shippingPaise)}</td>
-                  <td className="py-2.5 px-2 text-right font-mono">
-                    {rupees(Math.round((shippingPaise * 100) / (100 + gstRate)))}
-                  </td>
-                  <td className="py-2.5 px-2 text-right font-mono">
-                    {rupees(
-                      shippingPaise - Math.round((shippingPaise * 100) / (100 + gstRate))
-                    )}
-                  </td>
-                  <td className="py-2.5 px-2 text-right font-mono font-bold">
+                  <td className="py-2 px-2 border-r border-stone-300 text-center">9968</td>
+                  <td className="py-2 px-2 border-r border-stone-300 text-center">1</td>
+                  <td className="py-2 px-2 border-r border-stone-300 text-right">
                     {rupees(shippingPaise)}
                   </td>
+                  <td className="py-2 px-2 border-r border-stone-300 text-right">₹0</td>
+                  <td className="py-2 px-2 border-r border-stone-300 text-right">
+                    {rupees(Math.round((shippingPaise * 100) / (100 + gstRate)))}
+                  </td>
+                  <td className="py-2 px-2 border-r border-stone-300 text-right">
+                    {rupees(shippingPaise - Math.round((shippingPaise * 100) / (100 + gstRate)))}
+                  </td>
+                  <td className="py-2 px-2 text-right font-bold">{rupees(shippingPaise)}</td>
                 </tr>
               )}
             </tbody>
+            <tfoot>
+              <tr className="bg-stone-100 border-t-2 border-stone-900 font-mono font-extrabold text-stone-950">
+                <td colSpan={4} className="py-2.5 px-2 border-r border-stone-400 font-sans text-right uppercase">
+                  Invoice Total:
+                </td>
+                <td className="py-2.5 px-2 border-r border-stone-400 text-center">
+                  {computedLineRows.reduce((s, r) => s + r.qty, 0)}
+                </td>
+                <td className="py-2.5 px-2 border-r border-stone-400 text-right">
+                  {rupees(grossSubtotal)}
+                </td>
+                <td className="py-2.5 px-2 border-r border-stone-400 text-right text-emerald-800">
+                  {totalDiscount > 0 ? `- ${rupees(totalDiscount)}` : '₹0'}
+                </td>
+                <td className="py-2.5 px-2 border-r border-stone-400 text-right">
+                  {rupees(order.taxablePaise)}
+                </td>
+                <td className="py-2.5 px-2 border-r border-stone-400 text-right">
+                  {rupees(order.gstPaise)}
+                </td>
+                <td className="py-2.5 px-2 text-right text-xs">{rupees(order.amountPaise)}</td>
+              </tr>
+            </tfoot>
           </table>
         </div>
 
-        {/* Totals, Amount in Words & GST Tax Summary */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-4 border-t-2 border-stone-900">
-          <div className="text-xs text-stone-600 space-y-2">
-            <div className="p-3.5 rounded-xl bg-amber-50/70 border border-amber-200 text-stone-900">
-              <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-900 block">
-                Total Invoice Amount in Words
-              </span>
-              <p className="font-bold text-xs mt-0.5">{rupeesInWords(order.amountPaise)}</p>
+        {/* Row 4: HSN/SAC Tax Summary Table + Grand Total Block */}
+        <div className="grid grid-cols-1 md:grid-cols-12 border-b-2 border-stone-900">
+          <div className="md:col-span-7 p-4 border-b md:border-b-0 md:border-r border-stone-900 space-y-3">
+            <div>
+              <p className="text-[10px] font-extrabold uppercase tracking-wider text-stone-600 mb-1.5">
+                HSN / SAC WISE TAX BREAKUP SUMMARY:
+              </p>
+              <table className="w-full border border-stone-400 text-[10px] font-mono border-collapse">
+                <thead>
+                  <tr className="bg-stone-100 border-b border-stone-400 font-sans font-bold">
+                    <th className="py-1 px-2 border-r border-stone-300 text-left">HSN/SAC</th>
+                    <th className="py-1 px-2 border-r border-stone-300 text-right">Taxable Val</th>
+                    <th className="py-1 px-2 border-r border-stone-300 text-right">
+                      CGST ({halfRate}%)
+                    </th>
+                    <th className="py-1 px-2 border-r border-stone-300 text-right">
+                      {isIntra ? `SGST (${halfRate}%)` : `IGST (${gstRate}%)`}
+                    </th>
+                    <th className="py-1 px-2 text-right">Total Tax</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-stone-300">
+                  {hsnSummaryRows.map((h) => (
+                    <tr key={h.hsn}>
+                      <td className="py-1 px-2 border-r border-stone-300 font-bold">{h.hsn}</td>
+                      <td className="py-1 px-2 border-r border-stone-300 text-right">
+                        {rupees(h.taxablePaise)}
+                      </td>
+                      <td className="py-1 px-2 border-r border-stone-300 text-right">
+                        {rupees(h.cgstPaise)}
+                      </td>
+                      <td className="py-1 px-2 border-r border-stone-300 text-right">
+                        {rupees(isIntra ? h.sgstPaise : h.igstPaise)}
+                      </td>
+                      <td className="py-1 px-2 text-right font-bold">{rupees(h.totalTaxPaise)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-            <p className="font-bold text-stone-800">Terms & Conditions:</p>
-            <ul className="list-disc pl-4 space-y-1 text-[11px]">
-              <li>All prices are inclusive of applicable GST under Indian GST Rules.</li>
-              <li>
-                7-day hassle-free size exchange available with original handloom tags intact.
-              </li>
-              <li>
-                Authentic Jaipur Handloom & Craftsmanship | Tax is not payable under Reverse Charge.
-              </li>
-            </ul>
-            <div className="mt-3 p-3 rounded-xl bg-stone-50 border border-stone-200 text-[10px] text-stone-600 space-y-1">
-              <p className="font-bold text-stone-800 uppercase tracking-wider">
-                Reference & Invoice Numbering Legend (CGST Rule 46b):
+
+            <div className="p-2.5 bg-stone-50 border border-stone-300 space-y-1">
+              <p>
+                <strong>Total Invoice Amount in Words:</strong>{' '}
+                <span className="font-semibold">{rupeesInWords(order.amountPaise)}</span>
               </p>
               <p>
-                <strong>Order ID ({order.orderId}):</strong> <code>ORD</code> (Order) + <code>YYMMDD</code> (6-Digit Date) + <code>08</code> (Rajasthan State Code) + <code>NNNN</code> (4-Digit Serial)
-              </p>
-              <p>
-                <strong>Invoice No ({order.invoiceNumber}):</strong> <code>INV</code> (Tax Invoice) + <code>KC</code> (Kurti Couture Series) + <code>2026</code> (FY 2026-27) + <code>NNNN</code> (4-Digit Consecutive Serial, 16 chars max)
+                <strong>Total GST Tax in Words:</strong>{' '}
+                <span>{rupeesInWords(order.gstPaise)}</span>
               </p>
             </div>
           </div>
 
-          <div className="space-y-2 text-xs sm:pl-8">
-            <div className="flex justify-between text-stone-600">
-              <span>Items Gross Subtotal:</span>
-              <span className="font-mono font-semibold">
-                {rupees(order.subtotalPaise || order.amountPaise)}
-              </span>
-            </div>
-            {order.discountPaise > 0 && (
-              <div className="flex justify-between text-emerald-700 font-bold">
-                <span>Privilege Coupon Discount ({order.couponCode}):</span>
-                <span className="font-mono">− {rupees(order.discountPaise)}</span>
+          <div className="md:col-span-5 p-4 flex flex-col justify-between space-y-2 font-mono">
+            <div className="space-y-1.5">
+              <div className="flex justify-between">
+                <span className="font-sans text-stone-600">Gross Merchandise Value:</span>
+                <span>{rupees(grossSubtotal)}</span>
               </div>
-            )}
-            <div className="flex justify-between text-stone-600">
-              <span>Delivery / Shipping Charges (SAC 9968):</span>
-              <span className="font-mono font-semibold text-emerald-700">
-                {shippingPaise > 0 ? rupees(shippingPaise) : '₹0 (FREE)'}
-              </span>
-            </div>
-            <div className="flex justify-between text-stone-600 pt-1 border-t border-stone-200">
-              <span>Net Taxable Value:</span>
-              <span className="font-mono">{rupees(order.taxablePaise)}</span>
-            </div>
-            {isIntra ? (
-              <>
-                <div className="flex justify-between text-stone-600">
-                  <span>Add: CGST @ {halfRate}% (Intra-State):</span>
-                  <span className="font-mono">{rupees(order.cgstPaise)}</span>
+              {totalDiscount > 0 && (
+                <div className="flex justify-between text-emerald-800 font-bold">
+                  <span className="font-sans">Coupon Discount ({order.couponCode}):</span>
+                  <span>- {rupees(totalDiscount)}</span>
                 </div>
-                <div className="flex justify-between text-stone-600">
-                  <span>Add: SGST @ {halfRate}% (Intra-State):</span>
-                  <span className="font-mono">{rupees(order.sgstPaise)}</span>
-                </div>
-              </>
-            ) : (
-              <div className="flex justify-between text-stone-600">
-                <span>Add: IGST @ {gstRate}.0% (Inter-State):</span>
-                <span className="font-mono">{rupees(order.igstPaise)}</span>
+              )}
+              <div className="flex justify-between">
+                <span className="font-sans text-stone-600">Shipping & Handling (SAC 9968):</span>
+                <span>{shippingPaise > 0 ? rupees(shippingPaise) : '₹0.00 (FREE)'}</span>
               </div>
-            )}
-            <div className="flex justify-between text-base font-extrabold text-stone-900 pt-2 border-t-2 border-stone-900">
-              <span>Grand Total (Inclusive of GST):</span>
-              <span className="font-mono text-rose-900 text-lg">
-                {rupees(order.amountPaise)}
-              </span>
+              <div className="flex justify-between border-t border-stone-300 pt-1">
+                <span className="font-sans text-stone-600">Net Taxable Value:</span>
+                <span>{rupees(order.taxablePaise)}</span>
+              </div>
+              {isIntra ? (
+                <>
+                  <div className="flex justify-between">
+                    <span className="font-sans text-stone-600">Add: Central GST ({halfRate}%):</span>
+                    <span>{rupees(order.cgstPaise)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="font-sans text-stone-600">Add: State GST ({halfRate}%):</span>
+                    <span>{rupees(order.sgstPaise)}</span>
+                  </div>
+                </>
+              ) : (
+                <div className="flex justify-between">
+                  <span className="font-sans text-stone-600">Add: Integrated GST ({gstRate}%):</span>
+                  <span>{rupees(order.igstPaise)}</span>
+                </div>
+              )}
+              <div className="flex justify-between border-t-2 border-stone-900 pt-2 text-sm font-extrabold text-stone-950">
+                <span className="font-sans uppercase">Grand Total (Inclusive of GST):</span>
+                <span>{rupees(order.amountPaise)}</span>
+              </div>
             </div>
-            <div className="pt-6 text-right">
-              <p className="text-[11px] font-bold text-stone-800">{sp.signatoryName}</p>
-              <p className="text-[10px] text-stone-400 italic mt-0.5">
-                Digitally Signed • Authorised Signatory (No physical signature required)
-              </p>
+          </div>
+        </div>
+
+        {/* Row 5: Statutory Declaration, Numbering Legend & Authorized Signatory */}
+        <div className="grid grid-cols-1 md:grid-cols-12 p-4 gap-4 items-end">
+          <div className="md:col-span-8 space-y-1.5 text-[10px] text-stone-700">
+            <p className="font-bold uppercase text-stone-900">Declaration & Terms of Sale:</p>
+            <p>
+              1. We declare that this tax invoice shows the actual price of the goods described and that all particulars are true and correct.
+            </p>
+            <p>
+              2. All disputes are subject to Jaipur (Rajasthan) jurisdiction only. 7-day size exchange valid with original barcode tags intact.
+            </p>
+            <p className="font-mono text-[9.5px] text-stone-600 pt-1">
+              <strong>Document Numbering Key:</strong> Order ID <code>{order.orderId}</code> = <code>ORD</code> + 6-Digit Date (<code>YYMMDD</code>) + State Code (<code>08</code>) + 4-Digit Serial | Invoice <code>{order.invoiceNumber}</code> = <code>INV-KC-2026-NNNN</code> (16-Char CGST Rule 46b Format).
+            </p>
+          </div>
+
+          <div className="md:col-span-4 text-left md:text-right border-t md:border-t-0 pt-3 md:pt-0 border-stone-300">
+            <p className="font-bold text-stone-950 text-[11px]">For {sp.legalName}</p>
+            <div className="my-3 inline-block px-3 py-1 border border-stone-800 font-mono text-[9px] uppercase tracking-wider bg-stone-50">
+              DIGITALLY VERIFIED TAX DOCUMENT
             </div>
+            <p className="text-[10px] text-stone-600">
+              Authorized Signatory (Computer Generated Invoice — No Physical Signature Required under Rule 46)
+            </p>
           </div>
         </div>
       </div>

@@ -6,6 +6,7 @@ import {
   DEMO_PRODUCTS,
   enrichProduct,
   filterAndSortProducts,
+  getProductPriceForSize,
   paginateProducts,
 } from '../lib/catalog';
 import {
@@ -33,18 +34,22 @@ import {
   listSentEmails,
   maskEmail,
   maskPhone,
+  requestEmailVerificationOtp,
   sanitizeText,
   updateLiveProduct,
   updateServerOrderTracking,
   updateStoreProfile,
   upsertCustomerAccount,
   upsertServerCoupon,
+  validateAuthenticEmail,
   validateCartServerSide,
   verifyAdminTokenHeader,
+  verifyEmailWithOtp,
 } from '../lib/serverStore';
 
 describe('Phase 1 Frontend — Luxury Catalog, Search, Filters, Sorting & Pagination', () => {
-  it('contains all 3 required categories (kurti, bag, accessory) with integer paise prices', () => {
+  it('contains 200+ items across all 3 required categories (kurti, bag, accessory) with size-based pricing', () => {
+    assert.equal(DEMO_PRODUCTS.length >= 200, true, `Expected 200+ products, got ${DEMO_PRODUCTS.length}`);
     const categories = new Set(DEMO_PRODUCTS.map((p) => p.category));
     assert.equal(categories.has('kurti'), true);
     assert.equal(categories.has('bag'), true);
@@ -52,6 +57,15 @@ describe('Phase 1 Frontend — Luxury Catalog, Search, Filters, Sorting & Pagina
     for (const p of DEMO_PRODUCTS) {
       assert.equal(Number.isInteger(p.price_paise) && p.price_paise > 0, true);
     }
+
+    // Verify dynamic size-based pricing on Kurti #1 (S < M < L < XL < XXL)
+    const p1 = DEMO_PRODUCTS[0];
+    const priceS = getProductPriceForSize(p1, 'S').price_paise;
+    const priceM = getProductPriceForSize(p1, 'M').price_paise;
+    const priceL = getProductPriceForSize(p1, 'L').price_paise;
+    const priceXL = getProductPriceForSize(p1, 'XL').price_paise;
+    const priceXXL = getProductPriceForSize(p1, 'XXL').price_paise;
+    assert.equal(priceS < priceM && priceM < priceL && priceL < priceXL && priceXL < priceXXL, true);
   });
 
   it('verifies every product SVG asset exists on disk in public/products/', () => {
@@ -93,13 +107,13 @@ describe('Phase 1 Frontend — Luxury Catalog, Search, Filters, Sorting & Pagina
   });
 
   it('paginates product lists with correct page boundaries', () => {
-    const page1 = paginateProducts(DEMO_PRODUCTS, 1, 8);
-    assert.equal(page1.items.length, 8);
+    const page1 = paginateProducts(DEMO_PRODUCTS, 1, 12);
+    assert.equal(page1.items.length, 12);
     assert.equal(page1.currentPage, 1);
-    assert.equal(page1.totalPages, 2);
+    assert.equal(page1.totalPages, Math.ceil(DEMO_PRODUCTS.length / 12));
 
-    const page2 = paginateProducts(DEMO_PRODUCTS, 2, 8);
-    assert.equal(page2.items.length, DEMO_PRODUCTS.length - 8);
+    const page2 = paginateProducts(DEMO_PRODUCTS, 2, 12);
+    assert.equal(page2.items.length, 12);
     assert.equal(page2.currentPage, 2);
   });
 
@@ -250,7 +264,20 @@ describe('Phase 1 Frontend — Zero-Trust Pricing, Coupons, Email Receipt Dispat
     assert.equal(explained.invoiceFormat.segments.length, 4);
     assert.equal(explained.trackingFormat.segments.length, 4);
 
-    // Gmail / Email Account Sync returns orders + saved address + wishlist
+    // Gmail / Email Account Sync + Real Email OTP Verification
+    assert.equal(validateAuthenticEmail('test@gmail.com').valid, false);
+    assert.equal(validateAuthenticEmail('123456@gmail.com').valid, false);
+    assert.equal(validateAuthenticEmail('pagal@gmail.com').valid, false);
+    assert.equal(validateAuthenticEmail('user@yopmail.com').valid, false);
+    assert.equal(validateAuthenticEmail('ananya.verma@gmail.com').valid, true);
+
+    const otpReq = requestEmailVerificationOtp('ananya.verma@gmail.com');
+    assert.equal(otpReq.success, true);
+    assert.equal(Boolean(otpReq.otpPreview && /^\d{6}$/.test(otpReq.otpPreview)), true);
+
+    const verifiedAcct = verifyEmailWithOtp('ananya.verma@gmail.com', otpReq.otpPreview!);
+    assert.equal(verifiedAcct.success, true);
+
     const acct = upsertCustomerAccount({
       email: 'ananya.verma@example.com',
       name: 'Ananya Verma',
@@ -277,7 +304,7 @@ describe('Phase 1 Frontend — Zero-Trust Pricing, Coupons, Email Receipt Dispat
       true
     );
     assert.equal(confirm1.emailSentTo, 'ananya.verma@example.com');
-    assert.equal(listSentEmails().length, emailsBefore + 1);
+    assert.equal(listSentEmails().length, emailsBefore + 2);
     const receipt = getOrderEmailReceipt(order1.orderId);
     assert.equal(receipt?.tracking_id, confirm1.trackingId);
     assert.equal(Boolean(receipt?.html_preview.includes(confirm1.trackingId!)), true);

@@ -5,6 +5,12 @@ const { redis } = require('../config/redis');
 const { createGatewayOrder } = require('../services/razorpay');
 const { confirmOrder } = require('../services/orderService');
 const { getCurrentTier, TIER_DESCRIPTIONS } = require('../services/fallbackService');
+const {
+  checkPincodeServiceability,
+  getDeliveryConfig,
+  notifyStoreOwnerOfOrder,
+  createProductInquiry,
+} = require('../services/deliveryService');
 
 const COUPONS = {
   FIRST10: { type: 'PERCENT', value: 10, minPaise: 0, maxDiscountPaise: 50000 },
@@ -149,12 +155,30 @@ async function createOrder(req, reply) {
   const safeName = sanitizeText(customer?.name, 80);
   const safePhone = String(customer?.phone || '').replace(/\D/g, '');
   const safeAddress = sanitizeText(customer?.address, 280);
+  const pinMatch = safeAddress.match(/\b([1-9][0-9]{5})\b/);
+  const extractedPin = customer?.pincode
+    ? String(customer.pincode).replace(/\D/g, '').slice(0, 6)
+    : pinMatch
+    ? pinMatch[1]
+    : '';
 
   if (safeName.length < 2 || !/^[6-9]\d{9}$/.test(safePhone) || safeAddress.length < 10) {
     return reply.code(400).send({
       success: false,
       error: 'Invalid customer name, 10-digit Indian phone number, or shipping address.',
     });
+  }
+
+  // If a PIN code is provided or embedded in the address, enforce Store Owner PIN & Address Serviceability
+  if (extractedPin) {
+    const pinCheck = checkPincodeServiceability(extractedPin, safeAddress);
+    if (!pinCheck.valid || !pinCheck.serviceable) {
+      return reply.code(400).send({
+        success: false,
+        error: pinCheck.message_en,
+        error_hi: pinCheck.message_hi,
+      });
+    }
   }
 
   const currentTier = await getCurrentTier();
@@ -390,6 +414,37 @@ async function mockPay(req, reply) {
   return { success: true, ...result };
 }
 
+async function checkDelivery(req, reply) {
+  const pincode =
+    req.query?.pincode || req.query?.pin || req.body?.pincode || '';
+  const address = req.query?.address || req.body?.address || undefined;
+  const result = checkPincodeServiceability(pincode, address);
+  const cfg = getDeliveryConfig();
+  return reply.code(result.valid ? 200 : 400).send({
+    success: result.valid && result.serviceable,
+    ...result,
+    deliveryMode: cfg.mode,
+  });
+}
+
+async function notifyOwnerOfConfirmedOrder(req, reply) {
+  const { orderId } = req.params;
+  const { rows } = await pool.query('SELECT * FROM orders WHERE order_id = $1', [orderId]);
+  if (!rows[0]) {
+    return reply.code(404).send({ success: false, error: 'Order not found.' });
+  }
+  const dispatched = notifyStoreOwnerOfOrder(rows[0], req.body?.note);
+  return { ...dispatched };
+}
+
+async function submitProductInquiry(req, reply) {
+  const result = createProductInquiry(req.body || {});
+  if (!result.success) {
+    return reply.code(400).send(result);
+  }
+  return result;
+}
+
 module.exports = {
   listProducts,
   getProductById,
@@ -398,4 +453,7 @@ module.exports = {
   getOrderStatus,
   trackOrder,
   mockPay,
+  checkDelivery,
+  notifyOwnerOfConfirmedOrder,
+  submitProductInquiry,
 };

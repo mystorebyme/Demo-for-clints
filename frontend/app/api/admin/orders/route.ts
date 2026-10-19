@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   getAdminAnalyticsSummary,
   getAdminConfig,
+  getDeliveryConfig,
   getLiveProducts,
   getStoreProfile,
+  listProductInquiries,
   listSentEmails,
   listServerCoupons,
   listServerOrders,
@@ -29,6 +31,8 @@ export async function GET(req: NextRequest) {
   const coupons = listServerCoupons();
   const emails = listSentEmails();
   const storeProfile = getStoreProfile();
+  const deliveryConfig = getDeliveryConfig();
+  const inquiries = listProductInquiries();
 
   return NextResponse.json({
     success: true,
@@ -39,5 +43,7 @@ export async function GET(req: NextRequest) {
     coupons,
     emails,
     storeProfile,
+    deliveryConfig,
+    inquiries,
   });
 }

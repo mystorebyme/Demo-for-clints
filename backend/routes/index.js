@@ -28,6 +28,8 @@ const createOrderSchema = {
         properties: {
           name: { type: 'string', minLength: 2, maxLength: 120 },
           phone: { type: 'string', pattern: '^[6-9][0-9]{9}$' },
+          email: { type: 'string', maxLength: 160 },
+          pincode: { type: 'string', maxLength: 10 },
           address: { type: 'string', minLength: 10, maxLength: 500 },
         },
       },
@@ -102,6 +104,10 @@ module.exports = async function routes(app) {
   app.get('/api/products', orders.listProducts);
   app.get('/api/products/:id', orders.getProductById);
   app.post('/api/cart/validate', orders.validateCart);
+  app.get('/api/delivery/check', orders.checkDelivery);
+  app.post('/api/delivery/check', orders.checkDelivery);
+  app.post('/api/inquiries', orders.submitProductInquiry);
+  app.post('/api/orders/:orderId/notify-owner', orders.notifyOwnerOfConfirmedOrder);
 
   app.post(
     '/api/create-order',
@@ -238,5 +244,9 @@ module.exports = async function routes(app) {
     );
 
     adminApp.get('/api/admin/audit-logs', admin.listAuditLogs);
+    adminApp.get('/api/admin/delivery-config', admin.getAdminDeliveryConfig);
+    adminApp.put('/api/admin/delivery-config', admin.putAdminDeliveryConfig);
+    adminApp.get('/api/inquiries', admin.getAdminInquiries);
+    adminApp.patch('/api/inquiries', admin.patchAdminInquiry);
   });
 };

@@ -2,9 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   authenticateOrRegisterAccount,
   getCustomerAccount,
+  requestRegistrationOtp,
+  signAccountSessionToken,
   upsertCustomerAccount,
   validateAuthenticEmail,
   verifyAccountSessionToken,
+  verifyRegistrationOtpAndCreate,
 } from '../../../lib/serverStore';
 
 export const dynamic = 'force-dynamic';
@@ -27,13 +30,12 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // Strict authorization guard: nobody can read another customer's email profile/orders without a signed session token
   const verified = verifyAccountSessionToken(token, check.email);
   if (!verified.valid) {
     return NextResponse.json(
       {
         success: false,
-        error: 'Session authentication required. Please sign in with your account password.',
+        error: 'Session authentication required. Please sign in with your verified account.',
       },
       { status: 401 }
     );
@@ -56,13 +58,85 @@ export async function POST(req: NextRequest) {
     const action = body?.action || 'sync';
     const email = String(body?.email || '').trim().toLowerCase();
 
-    if (action === 'login' || action === 'register') {
-      const authResult = authenticateOrRegisterAccount({
-        mode: action === 'register' ? 'register' : 'login',
+    // 1. Official Google OAuth 2.0 ID Token Verification
+    if (action === 'google_oauth') {
+      const credential = String(body?.credential || '');
+      if (!credential) {
+        return NextResponse.json(
+          { success: false, error: 'Missing Google OAuth credential token' },
+          { status: 400 }
+        );
+      }
+
+      try {
+        const verifyRes = await fetch(
+          `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`
+        );
+        if (!verifyRes.ok) {
+          return NextResponse.json(
+            { success: false, error: 'Google ID token verification failed' },
+            { status: 401 }
+          );
+        }
+        const tokenPayload = await verifyRes.json();
+        if (
+          tokenPayload.email_verified !== 'true' &&
+          tokenPayload.email_verified !== true
+        ) {
+          return NextResponse.json(
+            { success: false, error: 'Google account email is not verified' },
+            { status: 401 }
+          );
+        }
+
+        const googleEmail = String(tokenPayload.email || '').trim().toLowerCase();
+        const updated = upsertCustomerAccount({
+          email: googleEmail,
+          name: tokenPayload.name || '',
+        });
+
+        return NextResponse.json({
+          success: true,
+          sessionToken: signAccountSessionToken(googleEmail),
+          ...updated,
+        });
+      } catch {
+        return NextResponse.json(
+          { success: false, error: 'Could not verify Google OAuth token' },
+          { status: 401 }
+        );
+      }
+    }
+
+    // 2. Step 1 of Verified Account Creation: Send 6-Digit OTP to Email (Never exposed in response)
+    if (action === 'register_send_otp') {
+      const otpRes = requestRegistrationOtp({
         email,
         password: String(body?.password || ''),
-        name: body?.name,
-        phone: body?.phone,
+        name: String(body?.name || ''),
+        phone: String(body?.phone || ''),
+      });
+      if (!otpRes.success) {
+        return NextResponse.json(otpRes, { status: 400 });
+      }
+      return NextResponse.json(otpRes);
+    }
+
+    // 3. Step 2 of Verified Account Creation: Verify 6-Digit OTP from Email Inbox
+    if (action === 'register_verify_otp') {
+      const verifyRes = verifyRegistrationOtpAndCreate(email, String(body?.otp || ''));
+      if (!verifyRes.success) {
+        return NextResponse.json(verifyRes, { status: 401 });
+      }
+      return NextResponse.json(verifyRes);
+    }
+
+    // 4. Existing Verified Account Sign-In with Password
+    if (action === 'login') {
+      const authResult = authenticateOrRegisterAccount({
+        mode: 'login',
+        email,
+        password: String(body?.password || ''),
       });
 
       if (!authResult.success) {
@@ -79,7 +153,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(authResult);
     }
 
-    // Profile / Wishlist Sync requires valid signed session token for that email
+    // 5. Profile / Wishlist Sync (requires valid signed session token)
     const check = validateAuthenticEmail(email);
     if (!check.valid) {
       return NextResponse.json(

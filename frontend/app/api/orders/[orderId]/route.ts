@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
+  getDeliveryConfig,
   getServerOrder,
   getStoreProfile,
   verifyAccountSessionToken,
@@ -34,6 +35,7 @@ export async function GET(
   const isAuthorizedOwner = Boolean(hasValidOrderToken || accountCheck.valid || isAdmin);
 
   const storeProfile = getStoreProfile();
+  const deliveryConfig = getDeliveryConfig();
 
   return NextResponse.json({
     success: true,
@@ -65,6 +67,8 @@ export async function GET(
     trackingHistory: order.tracking_history || [],
     emailSent: order.email_sent,
     emailSentAt: order.email_sent_at,
+    ownerEmail: isAuthorizedOwner ? deliveryConfig.ownerEmail : undefined,
+    ownerWhatsApp: isAuthorizedOwner ? deliveryConfig.ownerWhatsApp : undefined,
     storeProfile,
     qrExpiresAt: isAuthorizedOwner ? order.qr_expires_at : undefined,
     qrPayload: isAuthorizedOwner ? order.qr_payload : undefined,

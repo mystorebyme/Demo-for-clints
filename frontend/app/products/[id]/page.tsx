@@ -46,13 +46,29 @@ export default function ProductDetailPage() {
   const [addedFeedback, setAddedFeedback] = useState(false);
   const [showSizeModal, setShowSizeModal] = useState(false);
 
-  // Pincode delivery checker
+  // Pincode delivery checker (Store Owner Serviceability Engine)
   const [pinInput, setPinInput] = useState('302001');
   const [pinResult, setPinResult] = useState<string | null>(
     lang === 'hi'
-      ? ' जयपुर/राजस्थान में 2-3 दिनों में मुफ़्त बीमाकृत डिलीवरी (Delhivery Express)'
-      : ' Free Express Delivery by 22 Oct 2026 via Delhivery Express'
+      ? 'पिन 302001 (Jaipur, Rajasthan) पर डिलीवरी उपलब्ध है — Delhivery Express'
+      : 'Serviceable at PIN 302001 (Jaipur, Rajasthan) — Free Insured Delivery via Delhivery Express'
   );
+  const [pinServiceable, setPinServiceable] = useState<boolean>(true);
+  const [pinChecking, setPinChecking] = useState<boolean>(false);
+
+  // Direct Product Inquiry to Store Owner
+  const [showInquiryModal, setShowInquiryModal] = useState(false);
+  const [inqName, setInqName] = useState('');
+  const [inqPhone, setInqPhone] = useState('');
+  const [inqEmail, setInqEmail] = useState('');
+  const [inqMessage, setInqMessage] = useState('');
+  const [inqSubmitting, setInqSubmitting] = useState(false);
+  const [inqError, setInqError] = useState('');
+  const [inqSuccess, setInqSuccess] = useState<{
+    message: string;
+    whatsappUrl: string;
+    mailtoUrl: string;
+  } | null>(null);
 
   // Review form
   const [showReviewForm, setShowReviewForm] = useState(false);
@@ -153,28 +169,79 @@ export default function ProductDetailPage() {
     router.push('/checkout');
   };
 
-  const handleCheckPincode = (e: React.FormEvent) => {
+  const handleCheckPincode = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validatePincode(pinInput)) {
+    const cleanPin = pinInput.replace(/\D/g, '').slice(0, 6);
+    if (cleanPin.length !== 6) {
+      setPinServiceable(false);
       setPinResult(
         lang === 'hi'
-          ? ' कृपया वैध 6-अंकों का भारतीय पिनकोड दर्ज करें।'
-          : ' Please enter a valid 6-digit Indian PIN code.'
+          ? 'कृपया वैध 6-अंकों का भारतीय पिनकोड दर्ज करें।'
+          : 'Please enter a valid 6-digit Indian PIN code.'
       );
       return;
     }
-    const isRajasthan = pinInput.startsWith('30') || pinInput.startsWith('31') || pinInput.startsWith('32') || pinInput.startsWith('33') || pinInput.startsWith('34');
-    const days = isRajasthan ? 2 : 4;
-    const eta = new Date(Date.now() + days * 86400 * 1000).toLocaleDateString('en-IN', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-    });
-    setPinResult(
-      lang === 'hi'
-        ? ` पिनकोड ${pinInput} पर ${eta} तक मुफ़्त डिलीवरी उपलब्ध है (Delhivery / BlueDart)`
-        : ` Free Insured Delivery to PIN ${pinInput} by ${eta} via Delhivery Express`
-    );
+
+    setPinChecking(true);
+    try {
+      const res = await fetch(`/api/delivery/check?pincode=${encodeURIComponent(cleanPin)}`, {
+        cache: 'no-store',
+      });
+      const data = await res.json();
+      const ok = Boolean(data.valid && data.serviceable);
+      setPinServiceable(ok);
+      setPinResult(lang === 'hi' && data.message_hi ? data.message_hi : data.message_en);
+    } catch {
+      const valid = validatePincode(cleanPin);
+      setPinServiceable(valid);
+      setPinResult(
+        valid
+          ? `Delivery available to PIN ${cleanPin}`
+          : 'Please enter a valid 6-digit Indian PIN code.'
+      );
+    } finally {
+      setPinChecking(false);
+    }
+  };
+
+  const handleSubmitInquiry = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setInqError('');
+    setInqSuccess(null);
+    setInqSubmitting(true);
+    try {
+      const res = await fetch('/api/inquiries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productId: product.id,
+          selectedSize,
+          customerName: inqName.trim(),
+          customerPhone: inqPhone.replace(/\D/g, '').slice(0, 10),
+          customerEmail: inqEmail.trim(),
+          pincode: pinInput.replace(/\D/g, '').slice(0, 6),
+          message: inqMessage.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setInqError(data.error || 'Could not send inquiry. Please verify your details.');
+        return;
+      }
+      setInqSuccess({
+        message:
+          lang === 'hi'
+            ? 'आपका संदेश स्टोर ओनर (prakashgothwal370@gmail.com) को भेज दिया गया है।'
+            : 'Your inquiry has been dispatched directly to the Store Owner (prakashgothwal370@gmail.com).',
+        whatsappUrl: data.ownerWhatsAppUrl,
+        mailtoUrl: data.ownerMailtoUrl,
+      });
+      setInqMessage('');
+    } catch {
+      setInqError('Failed to send inquiry to store owner.');
+    } finally {
+      setInqSubmitting(false);
+    }
   };
 
   const handleSubmitReview = async (e: React.FormEvent) => {
@@ -320,13 +387,6 @@ export default function ProductDetailPage() {
                 </span>
               </div>
 
-              {/* Coupon Teaser Box */}
-              <div className="mb-5 p-3 rounded-xl bg-amber-50/90 border border-amber-200 text-xs text-amber-950 flex flex-wrap items-center justify-between gap-2">
-                <span>
-                   <strong>Festive Offer:</strong> Use code <code className="font-mono font-bold bg-white px-1.5 py-0.5 rounded border border-amber-300">DIWALI20</code> for 20% OFF or <code className="font-mono font-bold bg-white px-1.5 py-0.5 rounded border border-amber-300">FIRST10</code> for 10% OFF!
-                </span>
-              </div>
-
               <p className="text-stone-600 text-sm sm:text-base leading-relaxed mb-6">
                 {displayDesc}
               </p>
@@ -407,11 +467,18 @@ export default function ProductDetailPage() {
                 </div>
               </div>
 
-              {/* Pincode Delivery Date Checker */}
+              {/* Pincode Delivery Date & Store Owner Serviceability Checker */}
               <div className="mb-6 p-3.5 rounded-2xl bg-stone-50 border border-stone-200">
-                <label className="block text-xs font-bold uppercase tracking-wider text-stone-600 mb-2">
-                   {t('pincodeCheck')}
-                </label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-stone-600">
+                    {lang === 'hi'
+                      ? 'पिनकोड और डिलीवरी उपलब्धता जाँचें'
+                      : 'Check Delivery PIN Code & Serviceability'}
+                  </label>
+                  <span className="text-[10px] font-mono text-stone-500">
+                    India Post 6-Digit Verified
+                  </span>
+                </div>
                 <form onSubmit={handleCheckPincode} className="flex gap-2">
                   <input
                     type="text"
@@ -423,13 +490,20 @@ export default function ProductDetailPage() {
                   />
                   <button
                     type="submit"
-                    className="px-4 py-1.5 rounded-xl bg-stone-900 hover:bg-stone-800 text-white text-xs font-bold"
+                    disabled={pinChecking}
+                    className="px-4 py-1.5 rounded-xl bg-stone-900 hover:bg-stone-800 text-white text-xs font-bold disabled:opacity-50"
                   >
-                    {t('checkDelivery')}
+                    {pinChecking ? 'Checking...' : t('checkDelivery')}
                   </button>
                 </form>
                 {pinResult && (
-                  <p className="text-xs font-medium text-emerald-800 mt-2">{pinResult}</p>
+                  <p
+                    className={`text-xs font-semibold mt-2 ${
+                      pinServiceable ? 'text-emerald-800' : 'text-rose-700'
+                    }`}
+                  >
+                    {pinResult}
+                  </p>
                 )}
               </div>
             </div>
@@ -466,20 +540,33 @@ export default function ProductDetailPage() {
                 </button>
               </div>
 
-              {/* WhatsApp Share & Inquiry Buttons */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+              {/* Direct Store Owner Item Inquiry + WhatsApp Share */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowInquiryModal((v) => !v);
+                    setInqError('');
+                  }}
+                  className="py-2.5 px-4 rounded-xl bg-stone-950 hover:bg-stone-800 text-amber-300 font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition"
+                >
+                  <span>
+                    {lang === 'hi'
+                      ? 'इस आइटम के बारे में स्टोर ओनर से पूछें'
+                      : 'Contact Store Owner About Item'}
+                  </span>
+                </button>
                 <a
                   href={buildWhatsAppOrderUrl({
                     id: product.id,
                     name: product.name,
-                    price_paise: product.price_paise,
+                    price_paise: activePricePaise,
                     size: selectedSize,
                   })}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition"
                 >
-                  <span></span>
                   <span>{t('askOnWhatsApp')}</span>
                 </a>
                 <a
@@ -488,10 +575,114 @@ export default function ProductDetailPage() {
                   rel="noopener noreferrer"
                   className="py-2.5 px-4 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200 font-bold text-xs flex items-center justify-center gap-2 transition"
                 >
-                  <span></span>
                   <span>{t('shareOnWhatsApp')}</span>
                 </a>
               </div>
+
+              {/* Direct Store Owner Product Inquiry Drawer */}
+              {showInquiryModal && (
+                <div className="mt-3 p-4 rounded-2xl bg-stone-50 border border-stone-200 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-stone-900">
+                        {lang === 'hi'
+                          ? 'स्टोर ओनर को सीधा संदेश भेजें (Direct Store Owner Inquiry)'
+                          : 'Direct Inquiry to Store Owner'}
+                      </h3>
+                      <p className="text-[11px] text-stone-500">
+                        Item: {product.name} ({product.sku}) — Size {selectedSize} ({rupees(activePricePaise)})
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowInquiryModal(false)}
+                      className="text-xs font-bold text-stone-500 hover:text-stone-900"
+                    >
+                      Close
+                    </button>
+                  </div>
+
+                  {inqError && (
+                    <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold">
+                      {inqError}
+                    </div>
+                  )}
+
+                  {inqSuccess ? (
+                    <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 space-y-2.5">
+                      <p className="text-xs font-bold text-emerald-900">{inqSuccess.message}</p>
+                      <div className="flex flex-wrap gap-2">
+                        <a
+                          href={inqSuccess.whatsappUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3.5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold"
+                        >
+                          Send Directly on Owner WhatsApp
+                        </a>
+                        <a
+                          href={inqSuccess.mailtoUrl}
+                          className="px-3.5 py-2 rounded-xl bg-stone-900 hover:bg-stone-800 text-amber-300 text-xs font-bold"
+                        >
+                          Open Direct Email to Owner
+                        </a>
+                      </div>
+                    </div>
+                  ) : (
+                    <form onSubmit={handleSubmitInquiry} className="space-y-2.5">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <input
+                          type="text"
+                          required
+                          value={inqName}
+                          onChange={(e) => setInqName(e.target.value)}
+                          placeholder={lang === 'hi' ? 'आपका नाम *' : 'Your Full Name *'}
+                          className="px-3 py-2 rounded-xl border border-stone-300 text-xs bg-white"
+                        />
+                        <input
+                          type="tel"
+                          required
+                          maxLength={10}
+                          value={inqPhone}
+                          onChange={(e) => setInqPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                          placeholder={lang === 'hi' ? '10-अंकों का मोबाइल नंबर *' : '10-Digit Mobile Number *'}
+                          className="px-3 py-2 rounded-xl border border-stone-300 text-xs font-mono bg-white"
+                        />
+                      </div>
+                      <input
+                        type="email"
+                        value={inqEmail}
+                        onChange={(e) => setInqEmail(e.target.value)}
+                        placeholder={lang === 'hi' ? 'आपकी ईमेल आईडी (वैकल्पिक)' : 'Your Email Address (Optional)'}
+                        className="w-full px-3 py-2 rounded-xl border border-stone-300 text-xs bg-white"
+                      />
+                      <textarea
+                        rows={3}
+                        required
+                        value={inqMessage}
+                        onChange={(e) => setInqMessage(e.target.value)}
+                        placeholder={
+                          lang === 'hi'
+                            ? 'इस आइटम के साइज, फैब्रिक, कस्टमाइजेशन या बल्क ऑर्डर के बारे में अपना सवाल लिखें...'
+                            : 'Ask the store owner about fabric, custom stitching, bulk availability, or delivery timeline for this item...'
+                        }
+                        className="w-full px-3 py-2 rounded-xl border border-stone-300 text-xs bg-white"
+                      />
+                      <button
+                        type="submit"
+                        disabled={inqSubmitting}
+                        className="w-full py-2.5 rounded-xl bg-stone-950 hover:bg-stone-800 text-amber-300 text-xs font-bold uppercase tracking-wider disabled:opacity-50"
+                      >
+                        {inqSubmitting
+                          ? 'Sending to Store Owner...'
+                          : lang === 'hi'
+                          ? 'स्टोर ओनर को पूछताछ भेजें'
+                          : 'Send Item Inquiry to Store Owner'}
+                      </button>
+                    </form>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>

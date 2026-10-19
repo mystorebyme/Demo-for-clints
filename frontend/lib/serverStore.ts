@@ -153,6 +153,45 @@ export type CustomerAccountRecord = {
   updated_at: string;
 };
 
+export type DeliveryMode = 'ALL_INDIA' | 'SELECTED_STATES' | 'CUSTOM_PINCODES';
+
+export type DeliveryConfig = {
+  mode: DeliveryMode;
+  serviceableStates: string[];
+  customPincodes: string[];
+  blockedPincodes: string[];
+  expressEtaDays: number;
+  standardEtaDays: number;
+  ownerEmail: string;
+  ownerWhatsApp: string;
+  updatedAt: string;
+};
+
+export type ProductInquiryRecord = {
+  id: string;
+  product_id: number;
+  product_name: string;
+  product_sku: string;
+  selected_size: string;
+  customer_name: string;
+  customer_phone: string;
+  customer_email: string;
+  pincode?: string;
+  message: string;
+  status: 'NEW' | 'REPLIED' | 'CLOSED';
+  admin_note?: string;
+  created_at: string;
+  updated_at: string;
+  productId?: number;
+  productName?: string;
+  sku?: string;
+  selectedSize?: string;
+  customerName?: string;
+  customerPhone?: string;
+  customerEmail?: string;
+  createdAt?: string;
+};
+
 export type ReferenceCodeSegment = {
   segment: string;
   digits: string;
@@ -160,14 +199,24 @@ export type ReferenceCodeSegment = {
   meaning_hi: string;
 };
 
+type PendingOtpRegistration = {
+  otp: string;
+  expiresAt: number;
+  name?: string;
+  phone?: string;
+  passwordHash?: string;
+};
+
 type GlobalStore = {
   storeProfile: StoreProfile;
+  deliveryConfig: DeliveryConfig;
   products: LiveProduct[];
   coupons: Map<string, CouponRecord>;
   reviews: Map<number, ProductReview[]>;
   orders: Map<string, ServerOrderRecord>;
   accounts: Map<string, CustomerAccountRecord>;
-  emailOtps: Map<string, { otp: string; expiresAt: number }>;
+  emailOtps: Map<string, PendingOtpRegistration>;
+  inquiries: ProductInquiryRecord[];
   emails: EmailReceiptRecord[];
   idempotencyMap: Map<string, string>;
   paymentIds: Set<string>;
@@ -213,13 +262,64 @@ const DEFAULT_STORE_PROFILE: StoreProfile = {
   stateName: 'Rajasthan',
   stateCode: '08',
   address: 'Showroom 14, Heritage Arcade, MI Road, Jaipur, Rajasthan – 302001',
-  supportEmail: 'concierge@zariyajaipur.in',
+  supportEmail: 'prakashgothwal370@gmail.com',
   supportPhone: '+91-9876543210',
   invoicePrefix: 'INV/ZRJ/26-27/',
   freeShippingThresholdPaise: 99900,
   shippingChargePaise: 0,
   gstRatePercent: 5,
   signatoryName: 'For Zariya Heritage Craft Pvt. Ltd. — Authorized Signatory',
+};
+
+const DEFAULT_DELIVERY_CONFIG: DeliveryConfig = {
+  mode: 'SELECTED_STATES',
+  serviceableStates: [
+    'Rajasthan',
+    'Delhi NCR',
+    'Haryana',
+    'Punjab',
+    'Uttar Pradesh',
+    'Uttarakhand',
+    'Gujarat',
+    'Maharashtra',
+    'Madhya Pradesh',
+    'Karnataka',
+    'Telangana',
+    'Tamil Nadu',
+    'West Bengal',
+    'Bihar',
+  ],
+  customPincodes: [
+    '302001',
+    '302002',
+    '302003',
+    '302004',
+    '302006',
+    '302012',
+    '302015',
+    '302017',
+    '302018',
+    '302019',
+    '302020',
+    '302021',
+    '302022',
+    '302033',
+    '305001',
+    '313001',
+    '324001',
+    '334001',
+    '342001',
+    '110001',
+    '400001',
+    '380001',
+    '560001',
+  ],
+  blockedPincodes: ['999999', '000000'],
+  expressEtaDays: 2,
+  standardEtaDays: 4,
+  ownerEmail: process.env.STORE_OWNER_EMAIL || 'prakashgothwal370@gmail.com',
+  ownerWhatsApp: process.env.STORE_OWNER_WHATSAPP || '919876543210',
+  updatedAt: new Date().toISOString(),
 };
 
 const DEMO_SEED_ORDER: ServerOrderRecord = {
@@ -515,6 +615,7 @@ function getStore(): GlobalStore {
 
     globalRef.__FASHION_SERVER_STORE__ = {
       storeProfile: { ...DEFAULT_STORE_PROFILE },
+      deliveryConfig: { ...DEFAULT_DELIVERY_CONFIG },
       products: DEMO_PRODUCTS.map((p) => ({
         ...p,
         sold_count: INITIAL_SOLD_COUNTS[p.id] ?? 12,
@@ -524,13 +625,36 @@ function getStore(): GlobalStore {
       orders: initialOrders,
       accounts: initialAccounts,
       emailOtps: new Map(),
+      inquiries: [
+        {
+          id: 'inq-1001',
+          product_id: 2,
+          product_name: 'Maharani Zardozi Festive Anarkali Kurti',
+          product_sku: 'ZJ-KRT-002',
+          selected_size: 'L',
+          customer_name: 'Meera Rathore',
+          customer_phone: '9829011223',
+          customer_email: 'meera.rathore@gmail.com',
+          pincode: '302001',
+          message: 'Can you dispatch this in Size L with matching dupatta to Civil Lines, Jaipur before Friday?',
+          status: 'NEW',
+          created_at: new Date(Date.now() - 3600 * 1000 * 4).toISOString(),
+          updated_at: new Date(Date.now() - 3600 * 1000 * 4).toISOString(),
+        },
+      ],
       emails: [seedEmail],
       idempotencyMap: new Map(),
       paymentIds: new Set(['pay_verified_1001']),
-      notificationTarget: process.env.TELEGRAM_CHAT_ID || '+91-9876543210 (Concierge Alert)',
+      notificationTarget: process.env.TELEGRAM_CHAT_ID || 'prakashgothwal370@gmail.com',
       fallbackTier: 1,
       nextSerialNumber: 1002,
     };
+  }
+  if (!globalRef.__FASHION_SERVER_STORE__.deliveryConfig) {
+    globalRef.__FASHION_SERVER_STORE__.deliveryConfig = { ...DEFAULT_DELIVERY_CONFIG };
+  }
+  if (!globalRef.__FASHION_SERVER_STORE__.inquiries) {
+    globalRef.__FASHION_SERVER_STORE__.inquiries = [];
   }
   if (!globalRef.__FASHION_SERVER_STORE__.accounts) {
     globalRef.__FASHION_SERVER_STORE__.accounts = new Map();
@@ -1115,6 +1239,18 @@ export function createServerOrder(params: {
     return { success: false, error: 'Complete delivery address is required' };
   }
 
+  // Extract 6-digit PIN code if present in address or customer object and validate serviceability
+  const pinMatchInAddr = address.match(/\b([1-9]\d{5})\b/);
+  if (pinMatchInAddr) {
+    const pinCheck = checkPincodeServiceability(pinMatchInAddr[1], address);
+    if (!pinCheck.valid || !pinCheck.serviceable) {
+      return {
+        success: false,
+        error: pinCheck.message_en || 'This PIN code or address is not serviceable for delivery.',
+      };
+    }
+  }
+
   const validated = validateCartServerSide(params.items, params.couponCode, { email, phone });
   if (!validated.success || !validated.items || validated.totalPaise === undefined) {
     return { success: false, error: validated.error || 'Invalid cart' };
@@ -1404,8 +1540,9 @@ export function confirmServerOrder(
   ];
   record.updated_at = nowIso;
 
-  // Automatically dispatch HTML Email Receipt + Tracking ID to customer's email
+  // Automatically dispatch HTML Email Receipt + Tracking ID to customer's email AND Store Owner
   dispatchOrderConfirmationEmail(record);
+  notifyStoreOwnerOfOrder(record.order_id, 'Automatic Store Owner Dispatch on Payment Confirmation');
 
   return {
     result: 'confirmed',
@@ -1812,6 +1949,184 @@ export function authenticateOrRegisterAccount(input: {
   };
 }
 
+export function requestRegistrationOtp(input: {
+  email: string;
+  password: string;
+  name: string;
+  phone: string;
+}):
+  | {
+      success: true;
+      email: string;
+      message_en: string;
+      message_hi: string;
+    }
+  | {
+      success: false;
+      error: string;
+      error_hi?: string;
+    } {
+  const check = validateAuthenticEmail(input.email);
+  if (!check.valid) {
+    return {
+      success: false,
+      error: check.reason_en || 'Invalid email address',
+      error_hi: check.reason_hi,
+    };
+  }
+  const email = check.email;
+  const password = String(input.password || '');
+  if (password.length < 6) {
+    return {
+      success: false,
+      error: 'Password must be at least 6 characters long.',
+      error_hi: 'पासवर्ड कम से कम 6 अक्षरों का होना चाहिए।',
+    };
+  }
+
+  const cleanName = sanitizeText(input.name, 120);
+  if (cleanName.length < 2) {
+    return {
+      success: false,
+      error: 'Please enter your full name.',
+      error_hi: 'कृपया अपना पूरा नाम दर्ज करें।',
+    };
+  }
+
+  const cleanPhone = String(input.phone || '').replace(/\D/g, '').slice(-10);
+  if (!/^[6-9]\d{9}$/.test(cleanPhone)) {
+    return {
+      success: false,
+      error: 'Please enter a valid 10-digit Indian mobile number.',
+      error_hi: 'कृपया सही 10-अंकों का मोबाइल नंबर दर्ज करें।',
+    };
+  }
+
+  const store = getStore();
+  const existing = store.accounts.get(email);
+  if (existing && existing.password_hash) {
+    return {
+      success: false,
+      error:
+        'An account with this email is already registered and password-protected. Please sign in with your password.',
+      error_hi:
+        'यह ईमेल पहले से पासवर्ड द्वारा सुरक्षित है। कृपया अपने पासवर्ड से साइन इन करें।',
+    };
+  }
+
+  const matchingOrders = Array.from(store.orders.values()).filter(
+    (o) => (o.customer_email || '').toLowerCase() === email
+  );
+  if (matchingOrders.length > 0) {
+    const orderPhoneMatch = matchingOrders.some(
+      (o) => (o.phone || '').replace(/\D/g, '').slice(-10) === cleanPhone
+    );
+    if (!orderPhoneMatch) {
+      return {
+        success: false,
+        error:
+          'This email has existing order records. To protect customer privacy, you must enter the exact 10-digit mobile number used when placing the order.',
+        error_hi:
+          'ग्राहक की गोपनीयता की सुरक्षा के लिए, इस ईमेल से जुड़े ऑर्डर का वही 10-अंकों का मोबाइल नंबर दर्ज करना अनिवार्य है।',
+      };
+    }
+  }
+
+  const otp = String(crypto.randomInt(100000, 1000000));
+  const expiresAt = Date.now() + 10 * 60 * 1000;
+  store.emailOtps.set(email, {
+    otp,
+    expiresAt,
+    name: cleanName,
+    phone: cleanPhone,
+    passwordHash: hashAccountPassword(password, email),
+  });
+
+  // Record OTP dispatch in transactional outbox (never exposed in browser JSON)
+  store.emails.unshift({
+    id: `reg-otp-${Date.now()}`,
+    order_id: 'ACCOUNT-VERIFY',
+    to_email: email,
+    customer_name: cleanName,
+    subject: `[Zariya Jaipur] ${otp} is your 6-digit Account Verification Code`,
+    tracking_id: '',
+    invoice_number: '',
+    amount_paise: 0,
+    html_preview: `<div style="font-family:Georgia,serif;padding:24px;border:1px solid #d6d3d1;border-radius:12px;">
+      <h2 style="margin:0 0 8px;color:#1c1917;">Verify Your Zariya Jaipur Account</h2>
+      <p>Dear <strong>${cleanName}</strong>, enter the 6-digit verification code below to complete your account registration for <strong>${email}</strong>:</p>
+      <div style="font-size:28px;font-weight:bold;letter-spacing:6px;padding:12px 20px;background:#fafaf9;border:1px solid #a8a29e;display:inline-block;margin:12px 0;">${otp}</div>
+    </div>`,
+    sent_at: new Date().toISOString(),
+    status: 'DELIVERED',
+  });
+
+  return {
+    success: true,
+    email,
+    message_en: `A 6-digit verification code has been sent to ${email}. Please check your email inbox and enter the code to complete registration.`,
+    message_hi: `6-अंकों का वेरिफिकेशन कोड ${email} पर भेजा गया है। कृपया अपना ईमेल इनबॉक्स चेक करें और कोड दर्ज करें।`,
+  };
+}
+
+export function verifyRegistrationOtpAndCreate(rawEmail: string, rawOtp: string) {
+  const check = validateAuthenticEmail(rawEmail);
+  if (!check.valid) {
+    return {
+      success: false as const,
+      error: check.reason_en || 'Invalid email address',
+    };
+  }
+  const email = check.email;
+  const otp = String(rawOtp || '').replace(/\D/g, '');
+  const store = getStore();
+  const pending = store.emailOtps.get(email);
+
+  if (!pending || Date.now() > pending.expiresAt || !pending.passwordHash) {
+    return {
+      success: false as const,
+      error: 'Verification code has expired or was not requested. Please request a new code.',
+      error_hi: 'वेरिफिकेशन कोड समाप्त हो गया है। कृपया नया कोड मंगाएं।',
+    };
+  }
+
+  if (pending.otp !== otp) {
+    return {
+      success: false as const,
+      error: 'Incorrect 6-digit verification code. Account cannot be created without verifying your email.',
+      error_hi: 'गलत 6-अंकों का वेरिफिकेशन कोड। ईमेल सत्यापित किए बिना अकाउंट नहीं बनाया जा सकता।',
+    };
+  }
+
+  store.emailOtps.delete(email);
+  const existing = store.accounts.get(email);
+  const matchingOrders = Array.from(store.orders.values()).filter(
+    (o) => (o.customer_email || '').toLowerCase() === email
+  );
+  const nowIso = new Date().toISOString();
+
+  store.accounts.set(email, {
+    email,
+    name: pending.name || existing?.name || matchingOrders[0]?.customer_name || '',
+    phone: pending.phone || existing?.phone || matchingOrders[0]?.phone || '',
+    pincode: existing?.pincode || '302001',
+    cityState: existing?.cityState || 'Jaipur, Rajasthan',
+    address: existing?.address || matchingOrders[0]?.address || '',
+    wishlist: existing?.wishlist || [],
+    password_hash: pending.passwordHash,
+    email_verified: true,
+    verified_at: nowIso,
+    updated_at: nowIso,
+  });
+
+  const acctData = getCustomerAccount(email)!;
+  return {
+    success: true as const,
+    sessionToken: signAccountSessionToken(email),
+    ...acctData,
+  };
+}
+
 export function requestEmailVerificationOtp(rawEmail: string): {
   success: boolean;
   email?: string;
@@ -2148,6 +2463,7 @@ export function getAdminConfig() {
     notificationTarget: store.notificationTarget,
     fallbackTier: store.fallbackTier,
     storeProfile: store.storeProfile,
+    deliveryConfig: store.deliveryConfig,
   };
 }
 
@@ -2164,4 +2480,561 @@ export function verifyAdminTokenHeader(providedToken: string | null): boolean {
   const b = Buffer.from(expected);
   if (a.length !== b.length) return false;
   return crypto.timingSafeEqual(a, b);
+}
+
+// ============================================================================
+// INDIA POST PINCODE DIRECTORY & STORE OWNER DELIVERY SERVICEABILITY ENGINE
+// ============================================================================
+
+const INDIA_POST_2DIGIT_STATES: Record<string, { state: string; defaultDistrict: string }> = {
+  '11': { state: 'Delhi NCR', defaultDistrict: 'New Delhi' },
+  '12': { state: 'Haryana', defaultDistrict: 'Gurugram / Faridabad' },
+  '13': { state: 'Haryana', defaultDistrict: 'Ambala / Karnal' },
+  '14': { state: 'Punjab', defaultDistrict: 'Ludhiana / Jalandhar' },
+  '15': { state: 'Punjab', defaultDistrict: 'Bathinda / Patiala' },
+  '16': { state: 'Punjab', defaultDistrict: 'Chandigarh / Mohali' },
+  '17': { state: 'Himachal Pradesh', defaultDistrict: 'Shimla' },
+  '18': { state: 'Jammu & Kashmir', defaultDistrict: 'Jammu' },
+  '19': { state: 'Jammu & Kashmir', defaultDistrict: 'Srinagar' },
+  '20': { state: 'Uttar Pradesh', defaultDistrict: 'Noida / Ghaziabad / Agra' },
+  '21': { state: 'Uttar Pradesh', defaultDistrict: 'Prayagraj' },
+  '22': { state: 'Uttar Pradesh', defaultDistrict: 'Lucknow / Ayodhya' },
+  '23': { state: 'Uttar Pradesh', defaultDistrict: 'Mirzapur' },
+  '24': { state: 'Uttar Pradesh', defaultDistrict: 'Bareilly / Moradabad' },
+  '25': { state: 'Uttar Pradesh', defaultDistrict: 'Meerut' },
+  '26': { state: 'Uttarakhand', defaultDistrict: 'Nainital / Haldwani' },
+  '27': { state: 'Uttar Pradesh', defaultDistrict: 'Gorakhpur' },
+  '28': { state: 'Uttar Pradesh', defaultDistrict: 'Jhansi / Mathura' },
+  '30': { state: 'Rajasthan', defaultDistrict: 'Jaipur / Ajmer / Alwar' },
+  '31': { state: 'Rajasthan', defaultDistrict: 'Udaipur / Bhilwara / Chittorgarh' },
+  '32': { state: 'Rajasthan', defaultDistrict: 'Kota / Bharatpur / Sawai Madhopur' },
+  '33': { state: 'Rajasthan', defaultDistrict: 'Bikaner / Sikar / Jhunjhunu' },
+  '34': { state: 'Rajasthan', defaultDistrict: 'Jodhpur / Jaisalmer / Barmer / Pali' },
+  '36': { state: 'Gujarat', defaultDistrict: 'Rajkot / Jamnagar' },
+  '37': { state: 'Gujarat', defaultDistrict: 'Bhuj / Kutch' },
+  '38': { state: 'Gujarat', defaultDistrict: 'Ahmedabad / Gandhinagar' },
+  '39': { state: 'Gujarat', defaultDistrict: 'Surat / Vadodara' },
+  '40': { state: 'Maharashtra', defaultDistrict: 'Mumbai / Navi Mumbai / Thane' },
+  '41': { state: 'Maharashtra', defaultDistrict: 'Pune / Kolhapur / Solapur' },
+  '42': { state: 'Maharashtra', defaultDistrict: 'Nashik / Jalgaon' },
+  '43': { state: 'Maharashtra', defaultDistrict: 'Chhatrapati Sambhajinagar' },
+  '44': { state: 'Maharashtra', defaultDistrict: 'Nagpur / Amravati' },
+  '45': { state: 'Madhya Pradesh', defaultDistrict: 'Indore / Ujjain' },
+  '46': { state: 'Madhya Pradesh', defaultDistrict: 'Bhopal' },
+  '47': { state: 'Madhya Pradesh', defaultDistrict: 'Gwalior' },
+  '48': { state: 'Madhya Pradesh', defaultDistrict: 'Jabalpur' },
+  '49': { state: 'Chhattisgarh', defaultDistrict: 'Raipur / Bilaspur' },
+  '50': { state: 'Telangana', defaultDistrict: 'Hyderabad / Secunderabad / Warangal' },
+  '51': { state: 'Andhra Pradesh', defaultDistrict: 'Tirupati / Kurnool' },
+  '52': { state: 'Andhra Pradesh', defaultDistrict: 'Vijayawada / Guntur' },
+  '53': { state: 'Andhra Pradesh', defaultDistrict: 'Visakhapatnam' },
+  '56': { state: 'Karnataka', defaultDistrict: 'Bengaluru' },
+  '57': { state: 'Karnataka', defaultDistrict: 'Mysuru / Mangaluru' },
+  '58': { state: 'Karnataka', defaultDistrict: 'Hubballi / Belagavi' },
+  '59': { state: 'Karnataka', defaultDistrict: 'Belagavi' },
+  '60': { state: 'Tamil Nadu', defaultDistrict: 'Chennai' },
+  '61': { state: 'Tamil Nadu', defaultDistrict: 'Thanjavur / Tiruchirappalli' },
+  '62': { state: 'Tamil Nadu', defaultDistrict: 'Madurai' },
+  '63': { state: 'Tamil Nadu', defaultDistrict: 'Salem / Vellore' },
+  '64': { state: 'Tamil Nadu', defaultDistrict: 'Coimbatore' },
+  '67': { state: 'Kerala', defaultDistrict: 'Kozhikode / Kannur' },
+  '68': { state: 'Kerala', defaultDistrict: 'Kochi / Ernakulam' },
+  '69': { state: 'Kerala', defaultDistrict: 'Thiruvananthapuram' },
+  '70': { state: 'West Bengal', defaultDistrict: 'Kolkata / Howrah' },
+  '71': { state: 'West Bengal', defaultDistrict: 'Durgapur / Asansol' },
+  '72': { state: 'West Bengal', defaultDistrict: 'Kharagpur / Haldia' },
+  '73': { state: 'West Bengal', defaultDistrict: 'Siliguri / Darjeeling' },
+  '74': { state: 'West Bengal', defaultDistrict: 'Nadia / Krishnanagar' },
+  '75': { state: 'Odisha', defaultDistrict: 'Bhubaneswar / Cuttack' },
+  '76': { state: 'Odisha', defaultDistrict: 'Rourkela / Sambalpur' },
+  '77': { state: 'Odisha', defaultDistrict: 'Jharsuguda' },
+  '78': { state: 'Assam', defaultDistrict: 'Guwahati / Dibrugarh' },
+  '79': { state: 'North East', defaultDistrict: 'Shillong / Imphal / Agartala' },
+  '80': { state: 'Bihar', defaultDistrict: 'Patna / Gaya' },
+  '81': { state: 'Bihar', defaultDistrict: 'Bhagalpur' },
+  '82': { state: 'Jharkhand', defaultDistrict: 'Dhanbad / Bokaro' },
+  '83': { state: 'Jharkhand', defaultDistrict: 'Ranchi / Jamshedpur' },
+  '84': { state: 'Bihar', defaultDistrict: 'Muzaffarpur / Darbhanga' },
+  '85': { state: 'Bihar', defaultDistrict: 'Purnia / Katihar' },
+};
+
+const SPECIFIC_3DIGIT_DISTRICTS: Record<string, string> = {
+  '301': 'Alwar',
+  '302': 'Jaipur',
+  '303': 'Jaipur Rural / Dausa',
+  '304': 'Tonk',
+  '305': 'Ajmer',
+  '306': 'Pali',
+  '307': 'Sirohi / Mount Abu',
+  '311': 'Bhilwara',
+  '312': 'Chittorgarh',
+  '313': 'Udaipur',
+  '314': 'Dungarpur',
+  '321': 'Bharatpur',
+  '322': 'Sawai Madhopur',
+  '324': 'Kota',
+  '325': 'Bundi / Kota',
+  '326': 'Jhalawar',
+  '331': 'Churu',
+  '332': 'Sikar',
+  '333': 'Jhunjhunu',
+  '334': 'Bikaner',
+  '335': 'Sri Ganganagar / Hanumangarh',
+  '341': 'Nagaur',
+  '342': 'Jodhpur',
+  '343': 'Jalore',
+  '344': 'Barmer',
+  '345': 'Jaisalmer',
+  '110': 'New Delhi',
+  '122': 'Gurugram',
+  '201': 'Noida / Ghaziabad',
+  '226': 'Lucknow',
+  '380': 'Ahmedabad',
+  '395': 'Surat',
+  '400': 'Mumbai',
+  '411': 'Pune',
+  '452': 'Indore',
+  '462': 'Bhopal',
+  '500': 'Hyderabad',
+  '560': 'Bengaluru',
+  '600': 'Chennai',
+  '700': 'Kolkata',
+  '800': 'Patna',
+};
+
+const BOGUS_PINCODES = new Set([
+  '111111',
+  '222222',
+  '333333',
+  '444444',
+  '555555',
+  '666666',
+  '777777',
+  '888888',
+  '999999',
+  '123456',
+  '654321',
+  '100000',
+  '200000',
+  '300000',
+  '400000',
+  '500000',
+  '600000',
+  '700000',
+  '800000',
+  '900000',
+]);
+
+export function getDeliveryConfig(): DeliveryConfig {
+  return { ...getStore().deliveryConfig };
+}
+
+export function updateDeliveryConfig(patch: Partial<DeliveryConfig>): DeliveryConfig {
+  const store = getStore();
+  const cur = store.deliveryConfig;
+  const nextMode: DeliveryMode =
+    patch.mode && ['ALL_INDIA', 'SELECTED_STATES', 'CUSTOM_PINCODES'].includes(patch.mode)
+      ? patch.mode
+      : cur.mode;
+
+  const cleanStates = Array.isArray(patch.serviceableStates)
+    ? patch.serviceableStates.map((s) => sanitizeText(s, 60)).filter(Boolean)
+    : cur.serviceableStates;
+
+  const cleanCustomPins = Array.isArray(patch.customPincodes)
+    ? patch.customPincodes
+        .map((p) => String(p || '').replace(/\D/g, '').slice(0, 6))
+        .filter((p) => p.length >= 3)
+    : cur.customPincodes;
+
+  const cleanBlockedPins = Array.isArray(patch.blockedPincodes)
+    ? patch.blockedPincodes
+        .map((p) => String(p || '').replace(/\D/g, '').slice(0, 6))
+        .filter((p) => p.length >= 3)
+    : cur.blockedPincodes;
+
+  store.deliveryConfig = {
+    mode: nextMode,
+    serviceableStates: cleanStates,
+    customPincodes: Array.from(new Set(cleanCustomPins)),
+    blockedPincodes: Array.from(new Set(cleanBlockedPins)),
+    expressEtaDays:
+      patch.expressEtaDays !== undefined
+        ? Math.max(1, Math.min(15, Number(patch.expressEtaDays) || 2))
+        : cur.expressEtaDays,
+    standardEtaDays:
+      patch.standardEtaDays !== undefined
+        ? Math.max(1, Math.min(20, Number(patch.standardEtaDays) || 4))
+        : cur.standardEtaDays,
+    ownerEmail:
+      patch.ownerEmail && patch.ownerEmail.includes('@')
+        ? sanitizeText(patch.ownerEmail, 120).toLowerCase()
+        : cur.ownerEmail,
+    ownerWhatsApp:
+      patch.ownerWhatsApp !== undefined
+        ? String(patch.ownerWhatsApp).replace(/\D/g, '').slice(0, 14) || cur.ownerWhatsApp
+        : cur.ownerWhatsApp,
+    updatedAt: new Date().toISOString(),
+  };
+
+  return { ...store.deliveryConfig };
+}
+
+export function checkPincodeServiceability(
+  rawPincode: string,
+  rawAddress?: string
+): {
+  valid: boolean;
+  serviceable: boolean;
+  pincode: string;
+  district?: string;
+  state?: string;
+  cityState?: string;
+  etaDays?: number;
+  shippingChargePaise?: number;
+  message_en: string;
+  message_hi: string;
+} {
+  const pin = String(rawPincode || '').replace(/\D/g, '');
+  if (!/^[1-9]\d{5}$/.test(pin) || BOGUS_PINCODES.has(pin)) {
+    return {
+      valid: false,
+      serviceable: false,
+      pincode: pin,
+      message_en: `Invalid PIN code "${rawPincode}". Please enter a genuine 6-digit India Post PIN code.`,
+      message_hi: `अमान्य पिन कोड "${rawPincode}"। कृपया सही 6-अंकों का भारतीय पिन कोड दर्ज करें।`,
+    };
+  }
+
+  const prefix2 = pin.slice(0, 2);
+  const prefix3 = pin.slice(0, 3);
+  const regionInfo = INDIA_POST_2DIGIT_STATES[prefix2];
+  if (!regionInfo) {
+    return {
+      valid: false,
+      serviceable: false,
+      pincode: pin,
+      message_en: `PIN code ${pin} does not exist in the official India Post directory.`,
+      message_hi: `पिन कोड ${pin} भारतीय डाक निर्देशिका में मौजूद नहीं है।`,
+    };
+  }
+
+  const state = regionInfo.state;
+  const district = SPECIFIC_3DIGIT_DISTRICTS[prefix3] || regionInfo.defaultDistrict;
+  const cityState = `${district}, ${state}`;
+
+  // Validate address authenticity if provided
+  if (rawAddress !== undefined && rawAddress.trim() !== '') {
+    const cleanAddr = sanitizeText(rawAddress, 400);
+    const lettersOnly = cleanAddr.replace(/[^a-zA-Z\u0900-\u097F]/g, '');
+    if (
+      cleanAddr.length < 10 ||
+      lettersOnly.length < 5 ||
+      /^(.)\1{4,}$/i.test(lettersOnly) ||
+      /^(asdf|qwer|zxcv|test|fake|pagal|timepass)/i.test(cleanAddr)
+    ) {
+      return {
+        valid: false,
+        serviceable: false,
+        pincode: pin,
+        district,
+        state,
+        cityState,
+        message_en:
+          'Please enter a genuine, complete street/house address (House/Flat No, Road/Colony, Landmark).',
+        message_hi:
+          'कृपया सही और पूरा पता दर्ज करें (मकान/फ्लैट नंबर, गली/कॉलोनी, लैंडमार्क)।',
+      };
+    }
+  }
+
+  const config = getStore().deliveryConfig;
+
+  // 1. Check Store Owner Blocked Pincodes
+  if (
+    config.blockedPincodes.includes(pin) ||
+    config.blockedPincodes.includes(prefix3)
+  ) {
+    return {
+      valid: true,
+      serviceable: false,
+      pincode: pin,
+      district,
+      state,
+      cityState,
+      message_en: `Delivery to PIN ${pin} (${cityState}) is currently disabled by the Store Owner.`,
+      message_hi: `पिन कोड ${pin} (${cityState}) पर स्टोर ओनर द्वारा डिलीवरी अस्थायी रूप से बंद है।`,
+    };
+  }
+
+  // 2. Check Store Owner Mode
+  if (config.mode === 'SELECTED_STATES') {
+    const allowed = config.serviceableStates.some(
+      (s) => s.toLowerCase() === state.toLowerCase()
+    );
+    if (!allowed) {
+      return {
+        valid: true,
+        serviceable: false,
+        pincode: pin,
+        district,
+        state,
+        cityState,
+        message_en: `Sorry, delivery is currently not serviceable in ${state} (PIN ${pin}) as per Store Owner policy.`,
+        message_hi: `क्षमा करें, स्टोर ओनर की नीति के अनुसार ${state} (पिन ${pin}) में अभी डिलीवरी उपलब्ध नहीं है।`,
+      };
+    }
+  } else if (config.mode === 'CUSTOM_PINCODES') {
+    const allowed = config.customPincodes.some(
+      (p) => p === pin || (p.length === 3 && pin.startsWith(p))
+    );
+    if (!allowed) {
+      return {
+        valid: true,
+        serviceable: false,
+        pincode: pin,
+        district,
+        state,
+        cityState,
+        message_en: `PIN ${pin} (${cityState}) is outside the Store Owner's serviceable PIN code list.`,
+        message_hi: `पिन कोड ${pin} (${cityState}) स्टोर ओनर की डिलीवरी सूची में शामिल नहीं है।`,
+      };
+    }
+  }
+
+  const etaDays = state === 'Rajasthan' ? config.expressEtaDays : config.standardEtaDays;
+  const shippingChargePaise = getStore().storeProfile.shippingChargePaise || 0;
+
+  return {
+    valid: true,
+    serviceable: true,
+    pincode: pin,
+    district,
+    state,
+    cityState,
+    etaDays,
+    shippingChargePaise,
+    message_en: `Deliverable to ${cityState} (PIN ${pin}) — Express Insured Delivery in ${etaDays}–${etaDays + 1} Business Days.`,
+    message_hi: `${cityState} (पिन ${pin}) पर डिलीवरी उपलब्ध है — ${etaDays}–${etaDays + 1} कार्य दिवसों में एक्सप्रेस डिलीवरी।`,
+  };
+}
+
+// ============================================================================
+// DIRECT EMAIL RELAY + MANDATORY STORE OWNER ORDER NOTIFICATION + INQUIRIES
+// ============================================================================
+
+export function notifyStoreOwnerOfOrder(
+  orderId: string,
+  customerNote?: string
+): {
+  success: boolean;
+  ownerEmail: string;
+  ownerWhatsApp: string;
+  whatsappOrderUrl: string;
+  whatsappUrl?: string;
+  subject?: string;
+  error?: string;
+} {
+  const store = getStore();
+  const order = store.orders.get(orderId);
+  if (!order) {
+    return {
+      success: false,
+      ownerEmail: store.deliveryConfig.ownerEmail,
+      ownerWhatsApp: store.deliveryConfig.ownerWhatsApp,
+      whatsappOrderUrl: '',
+      error: 'Order not found',
+    };
+  }
+
+  const ownerEmail = store.deliveryConfig.ownerEmail || 'prakashgothwal370@gmail.com';
+  const ownerWhatsApp = store.deliveryConfig.ownerWhatsApp || '919876543210';
+  const nowIso = new Date().toISOString();
+  const amountInr = (order.amount_paise / 100).toFixed(2);
+  const itemsText = order.items
+    .map((i) => `• ${i.name} (Size: ${i.size}) x ${i.qty} = ₹${(i.line_total_paise / 100).toFixed(2)}`)
+    .join('\n');
+
+  const whatsappMessage = [
+    `*NEW WEBSITE ORDER CONFIRMED — ${store.storeProfile.storeName}*`,
+    `Order ID: ${order.order_id}`,
+    `Invoice No: ${order.invoice_number}`,
+    `Tracking ID: ${order.tracking_id || 'Assigned on Dispatch'}`,
+    `Payment Status: ${order.status} (₹${amountInr})`,
+    `Customer: ${order.customer_name} (+91-${order.phone})`,
+    `Email: ${order.customer_email}`,
+    `Deliverable Address: ${order.address}`,
+    `Items:\n${itemsText}`,
+    customerNote ? `Customer Note: ${sanitizeText(customerNote, 200)}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  const whatsappOrderUrl = `https://wa.me/${ownerWhatsApp}?text=${encodeURIComponent(whatsappMessage)}`;
+
+  // Record direct Store Owner Order Notification in email outbox
+  store.emails.unshift({
+    id: `owner-ord-${order.order_id}-${Date.now()}`,
+    order_id: order.order_id,
+    to_email: ownerEmail,
+    customer_name: `Store Owner (${ownerEmail})`,
+    subject: `[STORE OWNER ORDER DISPATCH] ${order.order_id} — ₹${amountInr} from ${order.customer_name}`,
+    tracking_id: order.tracking_id || '',
+    invoice_number: order.invoice_number,
+    amount_paise: order.amount_paise,
+    html_preview: `<div style="font-family:sans-serif;padding:20px;border:2px solid #1c1917;border-radius:12px;">
+      <h2 style="margin:0 0 8px;">New Website Order for Store Owner (${ownerEmail})</h2>
+      <p><strong>Order Reference:</strong> ${order.order_id} | <strong>Invoice:</strong> ${order.invoice_number} | <strong>Tracking AWB:</strong> ${order.tracking_id || 'PENDING'}</p>
+      <p><strong>Customer:</strong> ${order.customer_name} (+91-${order.phone}, ${order.customer_email})</p>
+      <p><strong>Verified Delivery Address:</strong> ${order.address}</p>
+      <p><strong>Total Amount:</strong> ₹${amountInr} (${order.status})</p>
+      <pre style="background:#f5f5f4;padding:12px;border-radius:8px;">${itemsText}</pre>
+    </div>`,
+    sent_at: nowIso,
+    status: 'DELIVERED',
+  });
+
+  return {
+    success: true,
+    ownerEmail,
+    ownerWhatsApp,
+    whatsappOrderUrl,
+    whatsappUrl: whatsappOrderUrl,
+    subject: `[STORE OWNER ORDER DISPATCH] ${order.order_id} — ₹${amountInr} from ${order.customer_name}`,
+  };
+}
+
+export function createProductInquiry(input: {
+  productId: number;
+  selectedSize?: string;
+  customerName: string;
+  customerPhone: string;
+  customerEmail?: string;
+  pincode?: string;
+  message: string;
+}):
+  | {
+      success: true;
+      inquiry: ProductInquiryRecord;
+      ownerEmail: string;
+      whatsappInquiryUrl: string;
+      ownerWhatsAppUrl?: string;
+      ownerMailtoUrl?: string;
+    }
+  | { success: false; error: string } {
+  const store = getStore();
+  const product = store.products.find((p) => p.id === Number(input.productId));
+  if (!product) {
+    return { success: false, error: 'Product not found' };
+  }
+
+  const name = sanitizeText(input.customerName, 80);
+  const phone = String(input.customerPhone || '').replace(/\D/g, '').slice(-10);
+  const email = sanitizeText(input.customerEmail || '', 120).toLowerCase();
+  const msg = sanitizeText(input.message, 500);
+  const size = sanitizeText(input.selectedSize || product.sizes?.[0] || 'Free Size', 30);
+  const pin = String(input.pincode || '').replace(/\D/g, '').slice(0, 6);
+
+  if (name.length < 2) {
+    return { success: false, error: 'Please enter your name' };
+  }
+  if (!/^[6-9]\d{9}$/.test(phone)) {
+    return { success: false, error: 'Please enter a valid 10-digit Indian mobile number' };
+  }
+  if (msg.length < 5) {
+    return { success: false, error: 'Please enter your question or customization inquiry' };
+  }
+
+  const nowIso = new Date().toISOString();
+  const sku = product.sku || `ZJ-${String(product.id).padStart(3, '0')}`;
+  const inquiry: ProductInquiryRecord = {
+    id: `INQ-${Date.now().toString().slice(-6)}`,
+    product_id: product.id,
+    product_name: product.name,
+    product_sku: sku,
+    selected_size: size,
+    customer_name: name,
+    customer_phone: phone,
+    customer_email: email,
+    pincode: pin,
+    message: msg,
+    status: 'NEW',
+    created_at: nowIso,
+    updated_at: nowIso,
+    productId: product.id,
+    productName: product.name,
+    sku,
+    selectedSize: size,
+    customerName: name,
+    customerPhone: phone,
+    customerEmail: email,
+    createdAt: nowIso,
+  };
+
+  store.inquiries.unshift(inquiry);
+
+  const ownerEmail = store.deliveryConfig.ownerEmail || 'prakashgothwal370@gmail.com';
+  const ownerWhatsApp = store.deliveryConfig.ownerWhatsApp || '919876543210';
+
+  store.emails.unshift({
+    id: `eml-${inquiry.id}`,
+    order_id: inquiry.id.toUpperCase(),
+    to_email: ownerEmail,
+    customer_name: name,
+    subject: `[PRODUCT INQUIRY] ${inquiry.product_sku} (${product.name}) from ${name}`,
+    tracking_id: '',
+    invoice_number: '',
+    amount_paise: product.price_paise,
+    html_preview: `<div style="font-family:sans-serif;padding:20px;border:1px solid #d6d3d1;border-radius:12px;">
+      <h3 style="margin:0 0 8px;">Customer Product Inquiry for Store Owner (${ownerEmail})</h3>
+      <p><strong>Product:</strong> ${product.name} (${inquiry.product_sku}) — Selected Size: ${size}</p>
+      <p><strong>Customer:</strong> ${name} | Phone: +91-${phone} ${email ? `| Email: ${email}` : ''}</p>
+      <p><strong>Message:</strong> ${msg}</p>
+    </div>`,
+    sent_at: nowIso,
+    status: 'DELIVERED',
+  });
+
+  const waText = [
+    `*Product Inquiry — ${store.storeProfile.storeName}*`,
+    `Item: ${product.name} (${inquiry.product_sku})`,
+    `Selected Size: ${size}`,
+    `Customer: ${name} (+91-${phone})`,
+    pin ? `Delivery PIN: ${pin}` : '',
+    `Question: ${msg}`,
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  const whatsappInquiryUrl = `https://wa.me/${ownerWhatsApp}?text=${encodeURIComponent(waText)}`;
+  return {
+    success: true,
+    inquiry,
+    ownerEmail,
+    whatsappInquiryUrl,
+    ownerWhatsAppUrl: whatsappInquiryUrl,
+    ownerMailtoUrl: `mailto:${ownerEmail}?subject=${encodeURIComponent(
+      `[Product Inquiry ${inquiry.id}] ${product.name} (${sku})`
+    )}&body=${encodeURIComponent(waText)}`,
+  };
+}
+
+export function listProductInquiries(): ProductInquiryRecord[] {
+  return [...getStore().inquiries];
+}
+
+export function updateProductInquiryStatus(
+  id: string,
+  status: 'NEW' | 'REPLIED' | 'CLOSED',
+  adminNote?: string
+): ProductInquiryRecord | null {
+  const store = getStore();
+  const found = store.inquiries.find((i) => i.id === id);
+  if (!found) return null;
+  found.status = status;
+  if (adminNote !== undefined) {
+    found.admin_note = sanitizeText(adminNote, 300);
+  }
+  found.updated_at = new Date().toISOString();
+  return { ...found };
 }

@@ -39,6 +39,15 @@ export default function CheckoutPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [serverError, setServerError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [pinStatus, setPinStatus] = useState<{
+    checked: boolean;
+    valid: boolean;
+    serviceable: boolean;
+    district?: string;
+    state?: string;
+    message_en: string;
+    message_hi: string;
+  } | null>(null);
 
   useEffect(() => {
     hydrate();
@@ -57,6 +66,41 @@ export default function CheckoutPage() {
   useEffect(() => {
     setCouponInput(appliedCoupon || '');
   }, [appliedCoupon]);
+
+  // Real-time PIN Code & Store Owner Serviceability Check
+  useEffect(() => {
+    const cleanPin = pincode.replace(/\D/g, '').slice(0, 6);
+    if (cleanPin.length !== 6) {
+      setPinStatus(null);
+      return;
+    }
+
+    let cancelled = false;
+    fetch(`/api/delivery/check?pincode=${encodeURIComponent(cleanPin)}`, {
+      cache: 'no-store',
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        if (cancelled) return;
+        setPinStatus({
+          checked: true,
+          valid: Boolean(d.valid),
+          serviceable: Boolean(d.serviceable),
+          district: d.district,
+          state: d.state,
+          message_en: d.message_en || '',
+          message_hi: d.message_hi || '',
+        });
+        if (d.valid && d.district && d.state) {
+          setCityState(`${d.district}, ${d.state}`);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pincode]);
 
   const clientSubtotalPaise = cart.reduce((acc, item) => acc + item.price_paise * item.qty, 0);
 
@@ -102,13 +146,32 @@ export default function CheckoutPage() {
     e.preventDefault();
     setServerError('');
 
-    const fullAddr = `${address.trim()}, ${cityState.trim()}${pincode ? `, PIN: ${pincode.trim()}` : ''}`;
+    const cleanPin = pincode.replace(/\D/g, '').slice(0, 6);
+    if (cleanPin.length !== 6) {
+      setErrors((prev) => ({
+        ...prev,
+        pincode:
+          lang === 'hi'
+            ? 'कृपया वैध 6-अंकों का पिनकोड दर्ज करें।'
+            : 'Please enter a valid 6-digit Indian PIN code.',
+      }));
+      return;
+    }
+
+    if (pinStatus && (!pinStatus.valid || !pinStatus.serviceable)) {
+      setServerError(
+        lang === 'hi' && pinStatus.message_hi ? pinStatus.message_hi : pinStatus.message_en
+      );
+      return;
+    }
+
+    const fullAddr = `${address.trim()}, ${cityState.trim()}, PIN: ${cleanPin}`;
     const check = validateCheckoutForm({
       name,
       phone,
       email,
       address: fullAddr,
-      pincode,
+      pincode: cleanPin,
     });
 
     if (!check.valid) {
@@ -143,6 +206,7 @@ export default function CheckoutPage() {
             name: name.trim(),
             email: email.trim(),
             phone: phone.replace(/\D/g, ''),
+            pincode: cleanPin,
             address: fullAddr,
           },
           items: cart.map((i) => ({ id: i.id, qty: i.qty, size: i.size || 'Free Size' })),
@@ -270,25 +334,40 @@ export default function CheckoutPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-stone-600 mb-1.5">
-                    {t('pincode')}
+                    {t('pincode')} (6-Digit Delivery PIN) *
                   </label>
                   <input
                     type="text"
+                    required
                     maxLength={6}
                     value={pincode}
-                    onChange={(e) => setPincode(e.target.value.replace(/\D/g, ''))}
+                    onChange={(e) => setPincode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                     placeholder={t('pincodePlaceholder')}
-                    className="w-full px-4 py-3 rounded-xl border border-stone-300 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
+                    className="w-full px-4 py-3 rounded-xl border border-stone-300 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-rose-500"
                   />
                   {errors.pincode && <p className="text-xs text-rose-700 mt-1">{errors.pincode}</p>}
+                  {pinStatus && (
+                    <p
+                      className={`text-[11px] font-semibold mt-1.5 ${
+                        pinStatus.valid && pinStatus.serviceable
+                          ? 'text-emerald-700'
+                          : 'text-rose-700'
+                      }`}
+                    >
+                      {lang === 'hi' && pinStatus.message_hi
+                        ? pinStatus.message_hi
+                        : pinStatus.message_en}
+                    </p>
+                  )}
                 </div>
 
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-stone-600 mb-1.5">
-                    {t('cityState')}
+                    {t('cityState')} (Auto-Verified by PIN) *
                   </label>
                   <input
                     type="text"
+                    required
                     value={cityState}
                     onChange={(e) => setCityState(e.target.value)}
                     placeholder={t('cityStatePlaceholder')}

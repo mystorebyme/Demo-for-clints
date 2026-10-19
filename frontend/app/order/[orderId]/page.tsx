@@ -107,6 +107,8 @@ type OrderDetail = {
   }[];
   emailSent?: boolean;
   emailSentAt?: string | null;
+  ownerEmail?: string;
+  ownerWhatsApp?: string;
   customerName?: string;
   customerEmail?: string;
   phone?: string;
@@ -138,9 +140,45 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
   const [message, setMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [copiedTracking, setCopiedTracking] = useState(false);
+  const [ownerDispatchNote, setOwnerDispatchNote] = useState('');
+  const [ownerDispatchSending, setOwnerDispatchSending] = useState(false);
+  const [ownerDispatchResult, setOwnerDispatchResult] = useState<{
+    ownerEmail: string;
+    whatsappUrl: string;
+    subject: string;
+  } | null>(null);
 
   const isConfirmed = order?.status === 'CONFIRMED' || order?.status === 'PAID';
   const isOwner = Boolean(order?.authorizedOwner);
+
+  const handleSendOrderToOwner = async () => {
+    if (!order) return;
+    setOwnerDispatchSending(true);
+    try {
+      const orderToken = getOrderAccessToken(orderId);
+      const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}/notify-owner`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(orderToken ? { 'x-order-token': orderToken } : {}),
+          ...(customerProfile.sessionToken
+            ? { 'x-account-token': customerProfile.sessionToken }
+            : {}),
+        },
+        body: JSON.stringify({ note: ownerDispatchNote.trim() || undefined }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setOwnerDispatchResult({
+          ownerEmail: data.ownerEmail || order.ownerEmail || 'prakashgothwal370@gmail.com',
+          whatsappUrl: data.whatsappUrl || '',
+          subject: data.subject || `Confirmed Order ${order.orderId}`,
+        });
+      }
+    } finally {
+      setOwnerDispatchSending(false);
+    }
+  };
 
   const fetchOrder = useCallback(async () => {
     try {
@@ -318,7 +356,7 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
                 </div>
               </div>
 
-              {/* Clean Email Dispatch Status Notice (No Resend / No Raw Email Preview Button) */}
+              {/* Clean Email Dispatch Status Notice */}
               {order.customerEmail && (
                 <div className="bg-emerald-50/90 border border-emerald-200 rounded-2xl p-4 sm:p-5 flex items-center justify-between gap-4">
                   <div className="space-y-1">
@@ -327,11 +365,91 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
                     </span>
                     <p className="text-xs text-emerald-950 font-medium pt-1">
                       Official GST Tax Invoice and Tracking ID dispatched to{' '}
-                      <strong className="font-mono">{order.customerEmail}</strong>.
+                      <strong className="font-mono">{order.customerEmail}</strong> & Store Owner (
+                      <strong className="font-mono">
+                        {order.ownerEmail || 'prakashgothwal370@gmail.com'}
+                      </strong>
+                      ).
                     </p>
                   </div>
                 </div>
               )}
+
+              {/* Mandatory Store Owner Confirmed Order Dispatch Box */}
+              <div className="bg-stone-950 text-amber-50 rounded-2xl p-4 sm:p-5 border border-amber-500/30 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <span className="inline-block px-2.5 py-0.5 rounded-full bg-amber-400/20 text-amber-300 text-[10px] font-bold uppercase tracking-widest">
+                      STORE OWNER ORDER DISPATCH
+                    </span>
+                    <h3 className="text-sm sm:text-base font-serif font-bold text-white mt-1">
+                      {lang === 'hi'
+                        ? 'अपना कन्फर्म ऑर्डर सीधे स्टोर ओनर को भेजें'
+                        : 'Send Your Confirmed Website Order to Store Owner'}
+                    </h3>
+                    <p className="text-xs text-stone-300 mt-0.5">
+                      {lang === 'hi'
+                        ? 'आपका ऑर्डर स्टोर ओनर की ईमेल आईडी पर भेज दिया गया है। आप नीचे दिए बटन से अपना पूरा ऑर्डर विवरण और कस्टम निर्देश सीधे स्टोर ओनर को भेज सकते हैं।'
+                        : 'Your confirmed order has been queued for the Store Owner. Add any special delivery/fitting instructions below and send your complete order sheet directly to the Store Owner.'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="text"
+                    value={ownerDispatchNote}
+                    onChange={(e) => setOwnerDispatchNote(e.target.value)}
+                    placeholder={
+                      lang === 'hi'
+                        ? 'स्टोर ओनर के लिए कोई विशेष निर्देश (जैसे: गिफ्ट पैक या जल्दी डिलीवरी)...'
+                        : 'Optional note for Store Owner (e.g., gift wrap, preferred delivery slot)...'
+                    }
+                    className="flex-1 px-3.5 py-2.5 rounded-xl bg-stone-900 border border-stone-700 text-xs text-white placeholder-stone-400 focus:outline-none focus:border-amber-400"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSendOrderToOwner}
+                    disabled={ownerDispatchSending}
+                    className="px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-stone-950 font-extrabold text-xs uppercase tracking-wider transition shrink-0 disabled:opacity-50"
+                  >
+                    {ownerDispatchSending
+                      ? 'Sending Order...'
+                      : lang === 'hi'
+                      ? 'स्टोर ओनर को कन्फर्म ऑर्डर भेजें'
+                      : 'Send Confirmed Order to Owner'}
+                  </button>
+                </div>
+
+                {ownerDispatchResult && (
+                  <div className="p-3 rounded-xl bg-emerald-950/70 border border-emerald-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                    <p className="text-xs text-emerald-200 font-medium">
+                      Confirmed order sheet dispatched to Store Owner (
+                      <strong className="font-mono">{ownerDispatchResult.ownerEmail}</strong>).
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {ownerDispatchResult.whatsappUrl && (
+                        <a
+                          href={ownerDispatchResult.whatsappUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold"
+                        >
+                          Send Order Sheet on Owner WhatsApp
+                        </a>
+                      )}
+                      <a
+                        href={`mailto:${ownerDispatchResult.ownerEmail}?subject=${encodeURIComponent(
+                          ownerDispatchResult.subject
+                        )}`}
+                        className="px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-amber-200 text-[11px] font-bold"
+                      >
+                        Direct Mail to Store Owner
+                      </a>
+                    </div>
+                  </div>
+                )}
+              </div>
 
               {/* Tracking ID & Live Shipment Card */}
               {order.trackingId && (

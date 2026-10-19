@@ -2,6 +2,12 @@ const { pool } = require('../config/db');
 const { emitToOrder } = require('../services/socket');
 const { getTarget, setTarget, sendTelegram } = require('../services/telegram');
 const { getCurrentTier, setCurrentTier, TIER_DESCRIPTIONS } = require('../services/fallbackService');
+const {
+  getDeliveryConfig,
+  updateDeliveryConfig,
+  listProductInquiries,
+  updateProductInquiryStatus,
+} = require('../services/deliveryService');
 
 const FULFILLMENT_TITLES = {
   ORDER_PLACED: 'Order Confirmed & Payment Verified',
@@ -41,7 +47,13 @@ async function listOrders() {
   const { rows: products } = await pool.query(
     'SELECT id, name, name_hi, category, price_paise, image_url, stock FROM products ORDER BY id'
   );
-  return { success: true, orders, products };
+  return {
+    success: true,
+    orders,
+    products,
+    deliveryConfig: getDeliveryConfig(),
+    inquiries: listProductInquiries(),
+  };
 }
 
 async function updateOrderTracking(req, reply) {
@@ -146,6 +158,32 @@ async function listAuditLogs() {
   return { success: true, logs: rows };
 }
 
+async function getAdminDeliveryConfig() {
+  return { success: true, deliveryConfig: getDeliveryConfig() };
+}
+
+async function putAdminDeliveryConfig(req) {
+  const updated = updateDeliveryConfig(req.body || {});
+  await recordAudit('UPDATE_DELIVERY_CONFIG', 'delivery_config', updated, req.ip);
+  return { success: true, deliveryConfig: updated };
+}
+
+async function getAdminInquiries() {
+  return { success: true, inquiries: listProductInquiries() };
+}
+
+async function patchAdminInquiry(req, reply) {
+  const updated = updateProductInquiryStatus(
+    String(req.body?.id || ''),
+    req.body?.status || 'REPLIED',
+    req.body?.adminNote
+  );
+  if (!updated) {
+    return reply.code(404).send({ success: false, error: 'Inquiry not found' });
+  }
+  return { success: true, inquiry: updated };
+}
+
 module.exports = {
   getNotificationTarget,
   updateNotificationTarget,
@@ -156,4 +194,8 @@ module.exports = {
   getFallbackTier,
   updateFallbackTier,
   listAuditLogs,
+  getAdminDeliveryConfig,
+  putAdminDeliveryConfig,
+  getAdminInquiries,
+  patchAdminInquiry,
 };

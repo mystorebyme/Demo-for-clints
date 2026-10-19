@@ -257,5 +257,28 @@ describe('Phases 3–10 Backend API — Products, Coupons, Auto Stock Deduction,
     });
     assert.equal(logsRes.statusCode, 200);
     assert.equal(logsRes.json().logs.length >= 3, true);
+
+    // 9. Verify Store Owner Delivery PIN Code & Product Inquiry endpoints
+    const pinOk = await app.inject({
+      method: 'GET',
+      url: '/api/delivery/check?pincode=302001',
+    });
+    assert.equal(pinOk.statusCode, 200);
+    assert.equal(pinOk.json().serviceable, true);
+    assert.equal(pinOk.json().state, 'Rajasthan');
+
+    const inqRes = await app.inject({
+      method: 'POST',
+      url: '/api/inquiries',
+      payload: {
+        productId: 1,
+        selectedSize: 'M',
+        customerName: 'Ritu Rathore',
+        customerPhone: '9829011223',
+        message: 'Is express delivery available in Jaipur today?',
+      },
+    });
+    assert.equal(inqRes.statusCode, 200);
+    assert.equal(inqRes.json().success, true);
   });
 });

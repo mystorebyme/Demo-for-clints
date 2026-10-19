@@ -3,6 +3,7 @@ const { pool } = require('../config/db');
 const { redis } = require('../config/redis');
 const { emitToOrder } = require('./socket');
 const { notifyOrderConfirmed } = require('./telegram');
+const { notifyStoreOwnerOfOrder } = require('./deliveryService');
 
 // Structured 12-Digit Courier AWB + Security PIN Tracking ID: TRK-KC-YYMMDD + 08 (Rajasthan) + 4-Digit Secret PIN
 function generateTrackingId() {
@@ -108,14 +109,24 @@ async function confirmOrder(gatewayOrderId, payment) {
   }
 
   order.tracking_id = trackingId;
+  const ownerDispatch = notifyStoreOwnerOfOrder(order);
   emitToOrder(order.order_id, 'payment_confirmed', {
     orderId: order.order_id,
     status: 'CONFIRMED',
     trackingId,
     emailDispatched: true,
+    ownerDispatched: true,
+    ownerEmail: ownerDispatch.ownerEmail,
   });
   notifyOrderConfirmed(order, payment).catch((e) => console.error('[notify]', e.message));
-  return { result: 'confirmed', orderId: order.order_id, trackingId, emailDispatched: true };
+  return {
+    result: 'confirmed',
+    orderId: order.order_id,
+    trackingId,
+    emailDispatched: true,
+    ownerDispatched: true,
+    ownerEmail: ownerDispatch.ownerEmail,
+  };
 }
 
 async function expireOldOrders(minutes) {

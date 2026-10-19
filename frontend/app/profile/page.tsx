@@ -55,6 +55,9 @@ export default function CustomerProfilePage() {
   } = useStore();
 
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [registerStep, setRegisterStep] = useState<'form' | 'otp'>('form');
+  const [otpCodeInput, setOtpCodeInput] = useState('');
+  const [otpSentNotice, setOtpSentNotice] = useState('');
   const [emailInput, setEmailInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
   const [registerNameInput, setRegisterNameInput] = useState('');
@@ -137,22 +140,92 @@ export default function CustomerProfilePage() {
 
     setAuthLoading(true);
     try {
+      // Step 1 of Registration: Send 6-Digit Verification Code to Email Inbox (Does NOT create account until OTP is verified!)
+      if (authMode === 'register' && registerStep === 'form') {
+        const res = await fetch('/api/account', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'register_send_otp',
+            email: cleanEmail,
+            password: passwordInput,
+            name: registerNameInput.trim(),
+            phone: registerPhoneInput.replace(/\D/g, ''),
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          setAuthError(
+            (lang === 'hi' && data.error_hi ? data.error_hi : data.error) ||
+              'Could not send verification code. Please check your details.'
+          );
+          return;
+        }
+        setRegisterStep('otp');
+        setOtpSentNotice(
+          (lang === 'hi' && data.message_hi ? data.message_hi : data.message_en) ||
+            `A 6-digit verification code has been emailed to ${cleanEmail}.`
+        );
+        return;
+      }
+
+      // Step 2 of Registration: Verify 6-Digit Email OTP
+      if (authMode === 'register' && registerStep === 'otp') {
+        const res = await fetch('/api/account', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'register_verify_otp',
+            email: cleanEmail,
+            otp: otpCodeInput.replace(/\D/g, ''),
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success || !data.sessionToken) {
+          setAuthError(
+            (lang === 'hi' && data.error_hi ? data.error_hi : data.error) ||
+              'Incorrect 6-digit verification code. Account cannot be created without verifying your email.'
+          );
+          return;
+        }
+
+        setCustomerProfile({
+          email: cleanEmail,
+          sessionToken: data.sessionToken,
+          emailVerified: true,
+          name: data.profile?.name || registerNameInput.trim() || '',
+          phone: data.profile?.phone || registerPhoneInput.replace(/\D/g, '') || '',
+          pincode: data.profile?.pincode || '302001',
+          cityState: data.profile?.cityState || 'Jaipur, Rajasthan',
+          address: data.profile?.address || '',
+          connectedAt: new Date().toISOString(),
+        });
+        if (Array.isArray(data.profile?.wishlist) && data.profile.wishlist.length > 0) {
+          setWishlist(data.profile.wishlist);
+        }
+        setOrders(Array.isArray(data.orders) ? data.orders : []);
+        setWishlistProducts(Array.isArray(data.wishlistProducts) ? data.wishlistProducts : []);
+        setPasswordInput('');
+        setOtpCodeInput('');
+        setRegisterStep('form');
+        return;
+      }
+
+      // Existing Verified Account Sign-In
       const res = await fetch('/api/account', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: authMode,
+          action: 'login',
           email: cleanEmail,
           password: passwordInput,
-          name: authMode === 'register' ? registerNameInput.trim() : undefined,
-          phone: authMode === 'register' ? registerPhoneInput.replace(/\D/g, '') : undefined,
         }),
       });
       const data = await res.json();
       if (!res.ok || !data.success || !data.sessionToken) {
         setAuthError(
           (lang === 'hi' && data.error_hi ? data.error_hi : data.error) ||
-            'Authentication failed. Please check your credentials.'
+            'Authentication failed. Please check your email and password.'
         );
         return;
       }
@@ -161,8 +234,8 @@ export default function CustomerProfilePage() {
         email: cleanEmail,
         sessionToken: data.sessionToken,
         emailVerified: true,
-        name: data.profile?.name || registerNameInput.trim() || '',
-        phone: data.profile?.phone || registerPhoneInput.replace(/\D/g, '') || '',
+        name: data.profile?.name || '',
+        phone: data.profile?.phone || '',
         pincode: data.profile?.pincode || '302001',
         cityState: data.profile?.cityState || 'Jaipur, Rajasthan',
         address: data.profile?.address || '',
@@ -260,6 +333,8 @@ export default function CustomerProfilePage() {
                 type="button"
                 onClick={() => {
                   setAuthMode('login');
+                  setRegisterStep('form');
+                  setOtpSentNotice('');
                   setAuthError('');
                 }}
                 className={`py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition ${
@@ -274,6 +349,8 @@ export default function CustomerProfilePage() {
                 type="button"
                 onClick={() => {
                   setAuthMode('register');
+                  setRegisterStep('form');
+                  setOtpSentNotice('');
                   setAuthError('');
                 }}
                 className={`py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition ${
@@ -282,7 +359,7 @@ export default function CustomerProfilePage() {
                     : 'text-stone-600 hover:text-stone-900'
                 }`}
               >
-                {lang === 'hi' ? 'नया अकाउंट बनाएं' : 'Create Account'}
+                {lang === 'hi' ? 'नया अकाउंट बनाएं (OTP सत्यापित)' : 'Create Verified Account'}
               </button>
             </div>
 
@@ -292,90 +369,148 @@ export default function CustomerProfilePage() {
               </div>
             )}
 
+            {otpSentNotice && registerStep === 'otp' && (
+              <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-semibold">
+                {otpSentNotice}
+              </div>
+            )}
+
             <form onSubmit={handleAuthSubmit} className="space-y-4">
-              {authMode === 'register' && (
-                <>
+              {authMode === 'register' && registerStep === 'otp' ? (
+                <div className="space-y-4">
                   <div>
                     <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-600 mb-1">
-                      {lang === 'hi' ? 'पूरा नाम' : 'Full Name'} *
+                      {lang === 'hi'
+                        ? `${emailInput} के इनबॉक्स में आया 6-अंकों का कोड दर्ज करें *`
+                        : `Enter 6-Digit Verification Code Sent to ${emailInput} *`}
                     </label>
                     <input
                       type="text"
                       required
-                      value={registerNameInput}
-                      onChange={(e) => setRegisterNameInput(e.target.value)}
-                      placeholder="e.g. Ananya Verma"
+                      maxLength={6}
+                      value={otpCodeInput}
+                      onChange={(e) => setOtpCodeInput(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      placeholder="6-Digit Email OTP"
+                      className="w-full px-3.5 py-3 rounded-xl border border-stone-300 text-sm font-mono font-bold tracking-[0.35em] text-center focus:outline-none focus:border-stone-900"
+                    />
+                    <p className="text-[11px] text-stone-500 mt-1.5">
+                      {lang === 'hi'
+                        ? 'बिना ईमेल इनबॉक्स OTP सत्यापन के कोई भी नया अकाउंट नहीं बनाया जा सकता।'
+                        : 'Account creation is strictly locked until you enter the 6-digit code sent to your email inbox.'}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRegisterStep('form');
+                        setOtpCodeInput('');
+                        setAuthError('');
+                      }}
+                      className="px-4 py-3 rounded-xl border border-stone-300 text-stone-700 text-xs font-bold"
+                    >
+                      Back
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={authLoading || otpCodeInput.length !== 6}
+                      className="flex-1 py-3 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-bold uppercase tracking-wider transition disabled:opacity-50"
+                    >
+                      {authLoading
+                        ? 'Verifying...'
+                        : lang === 'hi'
+                        ? 'OTP सत्यापित करें और अकाउंट बनाएं'
+                        : 'Verify Email OTP & Complete Registration'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {authMode === 'register' && (
+                    <>
+                      <div>
+                        <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-600 mb-1">
+                          {lang === 'hi' ? 'पूरा नाम' : 'Full Name'} *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={registerNameInput}
+                          onChange={(e) => setRegisterNameInput(e.target.value)}
+                          placeholder="e.g. Ananya Verma"
+                          className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 text-xs focus:outline-none focus:border-stone-900"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-600 mb-1">
+                          {lang === 'hi' ? '10-अंकों का मोबाइल नंबर' : '10-Digit Mobile Number'} *
+                        </label>
+                        <input
+                          type="tel"
+                          required
+                          maxLength={10}
+                          value={registerPhoneInput}
+                          onChange={(e) =>
+                            setRegisterPhoneInput(e.target.value.replace(/\D/g, '').slice(0, 10))
+                          }
+                          placeholder="9876543210"
+                          className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 text-xs font-mono focus:outline-none focus:border-stone-900"
+                        />
+                        <p className="text-[10px] text-stone-500 mt-1">
+                          {lang === 'hi'
+                            ? 'यदि आपने पहले इस ईमेल से ऑर्डर किया है, तो सुरक्षा के लिए वही मोबाइल नंबर दर्ज करें।'
+                            : 'If you previously placed an order with this email, enter the same mobile number used at checkout to verify ownership.'}
+                        </p>
+                      </div>
+                    </>
+                  )}
+
+                  <div>
+                    <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-600 mb-1">
+                      {lang === 'hi' ? 'ईमेल आईडी' : 'Email Address'} *
+                    </label>
+                    <input
+                      type="email"
+                      required
+                      value={emailInput}
+                      onChange={(e) => setEmailInput(e.target.value)}
+                      placeholder="yourname@gmail.com"
                       className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 text-xs focus:outline-none focus:border-stone-900"
                     />
                   </div>
+
                   <div>
                     <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-600 mb-1">
-                      {lang === 'hi' ? '10-अंकों का मोबाइल नंबर' : '10-Digit Mobile Number'} *
+                      {lang === 'hi' ? 'अकाउंट पासवर्ड (कम से कम 6 अक्षर)' : 'Account Password (min 6 chars)'} *
                     </label>
                     <input
-                      type="tel"
+                      type="password"
                       required
-                      maxLength={10}
-                      value={registerPhoneInput}
-                      onChange={(e) =>
-                        setRegisterPhoneInput(e.target.value.replace(/\D/g, '').slice(0, 10))
-                      }
-                      placeholder="9876543210"
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 text-xs font-mono focus:outline-none focus:border-stone-900"
+                      minLength={6}
+                      value={passwordInput}
+                      onChange={(e) => setPasswordInput(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 text-xs focus:outline-none focus:border-stone-900"
                     />
-                    <p className="text-[10px] text-stone-500 mt-1">
-                      {lang === 'hi'
-                        ? 'यदि आपने पहले इस ईमेल से ऑर्डर किया है, तो सुरक्षा के लिए वही मोबाइल नंबर दर्ज करें।'
-                        : 'If you previously placed an order with this email, enter the same mobile number used at checkout to verify ownership.'}
-                    </p>
                   </div>
+
+                  <button
+                    type="submit"
+                    disabled={authLoading}
+                    className="w-full py-3 rounded-xl bg-stone-950 hover:bg-stone-800 text-amber-300 text-xs font-bold uppercase tracking-wider transition disabled:opacity-50"
+                  >
+                    {authLoading
+                      ? 'Processing...'
+                      : authMode === 'login'
+                      ? lang === 'hi'
+                        ? 'सुरक्षित साइन इन करें'
+                        : 'Sign In with Password'
+                      : lang === 'hi'
+                      ? 'ईमेल पर 6-अंकों का वेरिफिकेशन कोड भेजें'
+                      : 'Send 6-Digit Verification Code to Email'}
+                  </button>
                 </>
               )}
-
-              <div>
-                <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-600 mb-1">
-                  {lang === 'hi' ? 'ईमेल आईडी' : 'Email Address'} *
-                </label>
-                <input
-                  type="email"
-                  required
-                  value={emailInput}
-                  onChange={(e) => setEmailInput(e.target.value)}
-                  placeholder="yourname@gmail.com"
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 text-xs focus:outline-none focus:border-stone-900"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-600 mb-1">
-                  {lang === 'hi' ? 'अकाउंट पासवर्ड (कम से कम 6 अक्षर)' : 'Account Password (min 6 chars)'} *
-                </label>
-                <input
-                  type="password"
-                  required
-                  minLength={6}
-                  value={passwordInput}
-                  onChange={(e) => setPasswordInput(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 text-xs focus:outline-none focus:border-stone-900"
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={authLoading}
-                className="w-full py-3 rounded-xl bg-stone-950 hover:bg-stone-800 text-amber-300 text-xs font-bold uppercase tracking-wider transition disabled:opacity-50"
-              >
-                {authLoading
-                  ? 'Verifying...'
-                  : authMode === 'login'
-                  ? lang === 'hi'
-                    ? 'सुरक्षित साइन इन करें'
-                    : 'Sign In to My Account'
-                  : lang === 'hi'
-                  ? 'अकाउंट बनाएं और लॉग इन करें'
-                  : 'Create Verified Account'}
-              </button>
             </form>
           </div>
         ) : (

@@ -96,6 +96,59 @@ type EmailReceiptRecord = {
   status: string;
 };
 
+type DeliveryConfigRecord = {
+  mode: 'ALL_INDIA' | 'SELECTED_STATES' | 'CUSTOM_PINCODES';
+  serviceableStates: string[];
+  customPincodes: string[];
+  blockedPincodes: string[];
+  expressEtaDays: number;
+  standardEtaDays: number;
+  ownerEmail: string;
+  ownerWhatsApp: string;
+};
+
+type ProductInquiryRecord = {
+  id: string;
+  productId: number;
+  productName: string;
+  sku: string;
+  selectedSize?: string;
+  customerName: string;
+  customerPhone: string;
+  customerEmail?: string;
+  pincode?: string;
+  message: string;
+  createdAt: string;
+  status: 'NEW' | 'REPLIED' | 'CLOSED';
+  adminNote?: string;
+};
+
+const ALL_INDIAN_STATES_LIST = [
+  'Rajasthan',
+  'Delhi',
+  'Haryana',
+  'Uttar Pradesh',
+  'Maharashtra',
+  'Gujarat',
+  'Madhya Pradesh',
+  'Punjab',
+  'Karnataka',
+  'Tamil Nadu',
+  'Telangana',
+  'West Bengal',
+  'Bihar',
+  'Kerala',
+  'Andhra Pradesh',
+  'Odisha',
+  'Assam',
+  'Chhattisgarh',
+  'Jharkhand',
+  'Uttarakhand',
+  'Himachal Pradesh',
+  'Goa',
+  'Jammu & Kashmir',
+];
+
 const TRACKING_STAGE_BUTTONS: { status: FulfillmentStatus; label: string }[] = [
   { status: 'ORDER_PLACED', label: ' Confirmed' },
   { status: 'PACKED', label: ' Packed' },
@@ -123,7 +176,7 @@ export default function AdminPage() {
   const [adminToken, setAdminToken] = useState('dev_admin_token_replace_me_123456');
   const [authenticated, setAuthenticated] = useState(false);
   const [activeTab, setActiveTab] = useState<
-    'orders' | 'products' | 'coupons' | 'gst_profile' | 'emails'
+    'orders' | 'delivery' | 'inquiries' | 'products' | 'coupons' | 'gst_profile' | 'emails'
   >('orders');
 
   const [orders, setOrders] = useState<AdminOrder[]>([]);
@@ -132,6 +185,33 @@ export default function AdminPage() {
   const [coupons, setCoupons] = useState<CouponRecord[]>([]);
   const [storeProfile, setStoreProfile] = useState<StoreProfile | null>(null);
   const [sentEmails, setSentEmails] = useState<EmailReceiptRecord[]>([]);
+  const [deliveryConfig, setDeliveryConfig] = useState<DeliveryConfigRecord>({
+    mode: 'ALL_INDIA',
+    serviceableStates: ['Rajasthan', 'Delhi', 'Maharashtra', 'Gujarat', 'Uttar Pradesh', 'Haryana'],
+    customPincodes: ['302001', '302002', '302004', '302017', '302019', '110001', '400001'],
+    blockedPincodes: [],
+    expressEtaDays: 2,
+    standardEtaDays: 5,
+    ownerEmail: 'prakashgothwal370@gmail.com',
+    ownerWhatsApp: '919876543210',
+  });
+  const [customPincodesInput, setCustomPincodesInput] = useState(
+    '302001, 302002, 302004, 302017, 302019, 110001, 400001'
+  );
+  const [blockedPincodesInput, setBlockedPincodesInput] = useState('');
+  const [testPinInput, setTestPinInput] = useState('302001');
+  const [testAddressInput, setTestAddressInput] = useState('Plot 24, Johari Bazar, Jaipur, Rajasthan');
+  const [testPinResult, setTestPinResult] = useState<{
+    valid: boolean;
+    serviceable: boolean;
+    message_en: string;
+    district?: string;
+    state?: string;
+  } | null>(null);
+
+  const [inquiries, setInquiries] = useState<ProductInquiryRecord[]>([]);
+  const [prodSearch, setProdSearch] = useState('');
+  const [prodCategoryFilter, setProdCategoryFilter] = useState<'all' | 'kurti' | 'bag' | 'accessory'>('all');
   const [previewEmail, setPreviewEmail] = useState<EmailReceiptRecord | null>(null);
   const [error, setError] = useState('');
   const [actionMsg, setActionMsg] = useState('');
@@ -178,6 +258,14 @@ export default function AdminPage() {
         if (Array.isArray(ordersData.coupons)) setCoupons(ordersData.coupons);
         if (Array.isArray(ordersData.emails)) setSentEmails(ordersData.emails);
         if (ordersData.storeProfile) setStoreProfile(ordersData.storeProfile);
+        if (ordersData.deliveryConfig) {
+          setDeliveryConfig(ordersData.deliveryConfig);
+          setCustomPincodesInput((ordersData.deliveryConfig.customPincodes || []).join(', '));
+          setBlockedPincodesInput((ordersData.deliveryConfig.blockedPincodes || []).join(', '));
+        }
+        if (Array.isArray(ordersData.inquiries)) {
+          setInquiries(ordersData.inquiries);
+        }
         setAuthenticated(true);
       } catch {
         setError('Could not load Admin Dashboard data');
@@ -573,6 +661,28 @@ export default function AdminPage() {
             </button>
             <button
               type="button"
+              onClick={() => setActiveTab('delivery')}
+              className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition ${
+                activeTab === 'delivery'
+                  ? 'bg-rose-900 text-white shadow-sm'
+                  : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
+              }`}
+            >
+               Delivery Zones & PIN Codes ({deliveryConfig.mode})
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('inquiries')}
+              className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition ${
+                activeTab === 'inquiries'
+                  ? 'bg-rose-900 text-white shadow-sm'
+                  : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
+              }`}
+            >
+               Customer Item Inquiries ({inquiries.length})
+            </button>
+            <button
+              type="button"
               onClick={() => setActiveTab('products')}
               className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition ${
                 activeTab === 'products'
@@ -580,7 +690,7 @@ export default function AdminPage() {
                   : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
               }`}
             >
-               Stock & Product Photo Manager ({products.length})
+               Stock & Product Catalog ({products.length})
             </button>
             <button
               type="button"
@@ -602,7 +712,7 @@ export default function AdminPage() {
                   : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
               }`}
             >
-               Sent Email Receipts ({sentEmails.length})
+               Sent Email Outbox ({sentEmails.length})
             </button>
             <button
               type="button"
@@ -748,6 +858,403 @@ export default function AdminPage() {
                 })}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {/* TAB 1B: STORE OWNER DELIVERY ZONES, SERVICEABLE PIN CODES & ADDRESS POLICY */}
+        {activeTab === 'delivery' && (
+          <div className="space-y-6">
+            <div className="bg-white rounded-3xl border border-stone-200 p-6 sm:p-8 shadow-sm space-y-6">
+              <div>
+                <span className="inline-block px-3 py-1 rounded-full bg-amber-100 text-amber-950 text-[10px] font-extrabold uppercase tracking-wider mb-2">
+                  STORE OWNER DELIVERY SERVICEABILITY CONTROL
+                </span>
+                <h2 className="text-lg sm:text-xl font-extrabold text-stone-900">
+                  Configure Deliverable Addresses, States & 6-Digit PIN Codes
+                </h2>
+                <p className="text-xs text-stone-500 mt-1">
+                  Only the Store Owner controls where delivery is enabled. Every customer PIN code and address on Product Pages and Checkout is verified against this policy and the official India Post 6-digit PIN directory.
+                </p>
+              </div>
+
+              {/* Delivery Mode Selector */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {[
+                  {
+                    mode: 'ALL_INDIA' as const,
+                    title: 'All India Delivery (28 States & 8 UTs)',
+                    desc: 'Deliver to any genuine 6-digit India Post PIN code across India (except blocked PIN codes).',
+                  },
+                  {
+                    mode: 'SELECTED_STATES' as const,
+                    title: 'Selected States Only',
+                    desc: 'Deliver ONLY to PIN codes located inside the Indian states selected by the Store Owner below.',
+                  },
+                  {
+                    mode: 'CUSTOM_PINCODES' as const,
+                    title: 'Custom PIN Code Whitelist Only',
+                    desc: 'Strict hyperlocal / custom courier mode — deliver ONLY to exact 6-digit PIN codes or 3-digit district prefixes listed below.',
+                  },
+                ].map((opt) => (
+                  <button
+                    key={opt.mode}
+                    type="button"
+                    onClick={() =>
+                      setDeliveryConfig((prev) => ({
+                        ...prev,
+                        mode: opt.mode,
+                      }))
+                    }
+                    className={`p-4 rounded-2xl border-2 text-left transition ${
+                      deliveryConfig.mode === opt.mode
+                        ? 'border-rose-900 bg-rose-50/70 shadow-xs'
+                        : 'border-stone-200 bg-stone-50 hover:border-stone-400'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-extrabold text-stone-900">{opt.title}</span>
+                      <span
+                        className={`w-4 h-4 rounded-full border flex items-center justify-center ${
+                          deliveryConfig.mode === opt.mode
+                            ? 'border-rose-900 bg-rose-900 text-white'
+                            : 'border-stone-400'
+                        }`}
+                      />
+                    </div>
+                    <p className="text-[11px] text-stone-600 leading-relaxed">{opt.desc}</p>
+                  </button>
+                ))}
+              </div>
+
+              {/* State Selection Checkboxes (Highlighted when SELECTED_STATES is active) */}
+              <div className="p-5 rounded-2xl bg-stone-50 border border-stone-200 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-xs font-extrabold uppercase tracking-wider text-stone-800">
+                      Serviceable Indian States ({deliveryConfig.serviceableStates.length} selected)
+                    </h3>
+                    <p className="text-[11px] text-stone-500">
+                      Used when Delivery Mode is set to &ldquo;Selected States Only&rdquo;.
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setDeliveryConfig((prev) => ({
+                          ...prev,
+                          serviceableStates: [...ALL_INDIAN_STATES_LIST],
+                        }))
+                      }
+                      className="px-3 py-1 rounded-lg bg-white border border-stone-300 text-[11px] font-bold text-stone-700"
+                    >
+                      Select All States
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setDeliveryConfig((prev) => ({
+                          ...prev,
+                          serviceableStates: ['Rajasthan'],
+                        }))
+                      }
+                      className="px-3 py-1 rounded-lg bg-white border border-stone-300 text-[11px] font-bold text-stone-700"
+                    >
+                      Rajasthan Only
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                  {ALL_INDIAN_STATES_LIST.map((st) => {
+                    const checked = deliveryConfig.serviceableStates.includes(st);
+                    return (
+                      <label
+                        key={st}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold cursor-pointer transition ${
+                          checked
+                            ? 'bg-stone-900 text-amber-300 border-stone-900'
+                            : 'bg-white text-stone-700 border-stone-200 hover:border-stone-400'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => {
+                            setDeliveryConfig((prev) => ({
+                              ...prev,
+                              serviceableStates: checked
+                                ? prev.serviceableStates.filter((s) => s !== st)
+                                : [...prev.serviceableStates, st],
+                            }));
+                          }}
+                          className="sr-only"
+                        />
+                        <span className="truncate">{st}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Custom Pincodes, Blocked Pincodes & Owner Notification Contacts */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-stone-700 mb-1">
+                    Custom Serviceable PIN Codes / 3-Digit District Prefixes (Comma-separated)
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={customPincodesInput}
+                    onChange={(e) => setCustomPincodesInput(e.target.value)}
+                    placeholder="302001, 302002, 302, 110001, 400001"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 text-xs font-mono"
+                  />
+                  <p className="text-[11px] text-stone-500 mt-1">
+                    Enter 6-digit PINs (e.g., 302001) or 3-digit district prefixes (e.g., 302 for all Jaipur PINs).
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-stone-700 mb-1">
+                    Blocked / Non-Serviceable PIN Codes (Comma-separated)
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={blockedPincodesInput}
+                    onChange={(e) => setBlockedPincodesInput(e.target.value)}
+                    placeholder="e.g., 190001, 795001"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 text-xs font-mono"
+                  />
+                  <p className="text-[11px] text-stone-500 mt-1">
+                    Orders to any PIN code in this list will be automatically blocked at checkout.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-stone-700 mb-1">
+                    Store Owner Order Notification Email (Direct Mail Target)
+                  </label>
+                  <input
+                    type="email"
+                    value={deliveryConfig.ownerEmail}
+                    onChange={(e) =>
+                      setDeliveryConfig((prev) => ({ ...prev, ownerEmail: e.target.value }))
+                    }
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 text-xs font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-stone-700 mb-1">
+                    Store Owner WhatsApp Number (with country code, e.g., 919876543210)
+                  </label>
+                  <input
+                    type="text"
+                    value={deliveryConfig.ownerWhatsApp}
+                    onChange={(e) =>
+                      setDeliveryConfig((prev) => ({
+                        ...prev,
+                        ownerWhatsApp: e.target.value.replace(/\D/g, ''),
+                      }))
+                    }
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 text-xs font-mono"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  setActionMsg('');
+                  const customList = customPincodesInput
+                    .split(',')
+                    .map((s) => s.trim())
+                    .filter(Boolean);
+                  const blockedList = blockedPincodesInput
+                    .split(',')
+                    .map((s) => s.trim())
+                    .filter(Boolean);
+                  const res = await fetch('/api/admin/delivery-config', {
+                    method: 'PUT',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'x-admin-token': adminToken,
+                    },
+                    body: JSON.stringify({
+                      ...deliveryConfig,
+                      customPincodes: customList,
+                      blockedPincodes: blockedList,
+                    }),
+                  });
+                  const data = await res.json();
+                  if (data.success && data.deliveryConfig) {
+                    setDeliveryConfig(data.deliveryConfig);
+                    setActionMsg(
+                      `Store Owner Delivery Policy saved (${data.deliveryConfig.mode}). Checkout & Product PIN checkers updated immediately!`
+                    );
+                  }
+                }}
+                className="px-6 py-3 rounded-xl bg-rose-900 hover:bg-rose-950 text-white text-xs font-extrabold uppercase tracking-wider shadow-sm transition"
+              >
+                Save Store Owner Delivery Policy
+              </button>
+
+              {/* Live PIN Code & Address Serviceability Simulator */}
+              <div className="p-5 rounded-2xl bg-stone-950 text-amber-50 space-y-3">
+                <h3 className="text-xs font-extrabold uppercase tracking-wider text-amber-300">
+                  Test PIN Code & Address Serviceability Against Current Policy
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <input
+                    type="text"
+                    maxLength={6}
+                    value={testPinInput}
+                    onChange={(e) => setTestPinInput(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    placeholder="6-Digit PIN (e.g. 302001)"
+                    className="px-3.5 py-2.5 rounded-xl bg-stone-900 border border-stone-700 text-xs font-mono text-white"
+                  />
+                  <input
+                    type="text"
+                    value={testAddressInput}
+                    onChange={(e) => setTestAddressInput(e.target.value)}
+                    placeholder="Sample Customer Delivery Address"
+                    className="px-3.5 py-2.5 rounded-xl bg-stone-900 border border-stone-700 text-xs text-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const res = await fetch('/api/delivery/check', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          pincode: testPinInput,
+                          address: testAddressInput,
+                        }),
+                      });
+                      const data = await res.json();
+                      setTestPinResult(data);
+                    }}
+                    className="px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-stone-950 font-extrabold text-xs uppercase tracking-wider"
+                  >
+                    Verify PIN & Address
+                  </button>
+                </div>
+                {testPinResult && (
+                  <div
+                    className={`p-3 rounded-xl text-xs font-semibold ${
+                      testPinResult.valid && testPinResult.serviceable
+                        ? 'bg-emerald-950/90 border border-emerald-500/40 text-emerald-200'
+                        : 'bg-rose-950/90 border border-rose-500/40 text-rose-200'
+                    }`}
+                  >
+                    {testPinResult.message_en}
+                    {testPinResult.district && testPinResult.state && (
+                      <span className="block text-[11px] text-amber-300 mt-1 font-mono">
+                        Detected Region: {testPinResult.district}, {testPinResult.state}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 1C: CUSTOMER PRODUCT INQUIRIES & DIRECT STORE OWNER CONTACT */}
+        {activeTab === 'inquiries' && (
+          <div className="bg-white rounded-3xl border border-stone-200 p-6 sm:p-8 shadow-sm space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="text-lg font-extrabold text-stone-900">
+                  Customer Item Inquiries Sent to Store Owner ({inquiries.length})
+                </h2>
+                <p className="text-xs text-stone-500">
+                  Questions submitted by customers from specific product pages regarding fabric, sizing, custom stitching, or delivery.
+                </p>
+              </div>
+            </div>
+
+            {inquiries.length === 0 ? (
+              <div className="p-8 rounded-2xl bg-stone-50 border border-stone-200 text-center text-xs text-stone-500">
+                No product inquiries submitted yet. Customers can contact the Store Owner from any product detail page.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {inquiries.map((inq) => (
+                  <div
+                    key={inq.id}
+                    className="p-4 rounded-2xl border border-stone-200 bg-stone-50 flex flex-col md:flex-row md:items-center justify-between gap-4"
+                  >
+                    <div className="space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="px-2.5 py-0.5 rounded-full bg-stone-900 text-amber-300 text-[10px] font-mono font-bold">
+                          {inq.id}
+                        </span>
+                        <span
+                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${
+                            inq.status === 'NEW'
+                              ? 'bg-amber-100 text-amber-900'
+                              : inq.status === 'REPLIED'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-stone-200 text-stone-700'
+                          }`}
+                        >
+                          {inq.status}
+                        </span>
+                        <Link
+                          href={`/products/${inq.productId}`}
+                          className="text-xs font-extrabold text-rose-900 hover:underline"
+                        >
+                          {inq.productName} ({inq.sku}) — Size: {inq.selectedSize || 'Free Size'}
+                        </Link>
+                      </div>
+                      <p className="text-xs text-stone-800 font-medium bg-white p-2.5 rounded-xl border border-stone-200">
+                        &ldquo;{inq.message}&rdquo;
+                      </p>
+                      <div className="text-[11px] text-stone-500 font-mono">
+                        Customer: <strong>{inq.customerName}</strong> | Phone:{' '}
+                        <strong>{inq.customerPhone}</strong>
+                        {inq.customerEmail ? ` | Email: ${inq.customerEmail}` : ''}
+                        {inq.pincode ? ` | PIN: ${inq.pincode}` : ''}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 shrink-0">
+                      <a
+                        href={`https://wa.me/91${inq.customerPhone}?text=${encodeURIComponent(
+                          `Namaste ${inq.customerName}, regarding your inquiry (${inq.id}) on Zariya Jaipur for ${inq.productName} (${inq.sku}): `
+                        )}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-3 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold"
+                      >
+                        Reply on WhatsApp
+                      </a>
+                      {inq.status !== 'REPLIED' && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await fetch('/api/inquiries', {
+                              method: 'PATCH',
+                              headers: {
+                                'Content-Type': 'application/json',
+                                'x-admin-token': adminToken,
+                              },
+                              body: JSON.stringify({ id: inq.id, status: 'REPLIED' }),
+                            });
+                            fetchAllAdminData();
+                          }}
+                          className="px-3 py-2 rounded-xl bg-stone-900 hover:bg-stone-800 text-amber-300 text-xs font-bold"
+                        >
+                          Mark Replied
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

@@ -185,6 +185,7 @@ type State = {
   hydrated: boolean;
   cart: CartItem[];
   wishlist: number[];
+  compareList: number[];
   appliedCoupon: string;
   customerProfile: CustomerProfile;
   hydrate: () => void;
@@ -196,6 +197,8 @@ type State = {
   clearCart: () => void;
   toggleWishlist: (id: number) => boolean;
   setWishlist: (ids: number[]) => void;
+  toggleCompare: (id: number) => boolean;
+  clearCompare: () => void;
   setAppliedCoupon: (code: string) => void;
   setCustomerProfile: (partial: Partial<CustomerProfile>) => void;
   disconnectCustomerProfile: () => void;
@@ -209,6 +212,7 @@ export const useStore = create<State>((set, get) => ({
   hydrated: false,
   cart: [],
   wishlist: [],
+  compareList: [],
   appliedCoupon: '',
   customerProfile: DEFAULT_PROFILE,
 
@@ -315,6 +319,20 @@ export const useStore = create<State>((set, get) => ({
     const clean = Array.from(new Set(ids.filter((n) => typeof n === 'number')));
     saveWishlist(clean);
     set({ wishlist: clean });
+  },
+
+  toggleCompare: (id) => {
+    const current = get().compareList;
+    const exists = current.includes(id);
+    const next = exists
+      ? current.filter((x) => x !== id)
+      : [...current, id].slice(-4);
+    set({ compareList: next });
+    return !exists;
+  },
+
+  clearCompare: () => {
+    set({ compareList: [] });
   },
 
   setAppliedCoupon: (code) => {

@@ -1,20 +1,23 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
-import ProductCard from '../components/ProductCard';
+import ProductCard, { extractProductShade, formatEthnicSizeLabel } from '../components/ProductCard';
 import {
   filterAndSortProducts,
+  getProductPriceForSize,
   paginateProducts,
   Product,
   ProductCategory,
   SortOption,
 } from '../lib/catalog';
-import { useStore } from '../lib/store';
+import { rupees, useStore } from '../lib/store';
 
 export default function HomePage() {
-  const { lang, t } = useStore();
+  const { lang, compareList, toggleCompare, clearCompare, addToCart, t } = useStore();
+  const [showCompareModal, setShowCompareModal] = useState(false);
 
   // Products are fetched exclusively from the backend /api/products endpoint (not hardcoded in frontpage code)
   const [products, setProducts] = useState<Product[]>([]);
@@ -484,6 +487,7 @@ export default function HomePage() {
               sub: 'Sanganeri Mulmul / Chanderi Zardozi / Chikankari',
               img: '/products/kurti2.jpg',
               tag: 'Festive Bestsellers',
+              count: products.filter((x) => x.category === 'kurti').length || 96,
             },
             {
               id: 'bag' as const,
@@ -491,6 +495,7 @@ export default function HomePage() {
               sub: 'Kutchi Abhla Mirror-Work / Dabu Totes / Velvet Potlis',
               img: '/products/bag2.jpg',
               tag: 'Handcrafted Guild',
+              count: products.filter((x) => x.category === 'bag').length || 60,
             },
             {
               id: 'accessory' as const,
@@ -498,6 +503,7 @@ export default function HomePage() {
               sub: 'Meenakari Jhumkas / Polki Chokers / Ajrakh Silk',
               img: '/products/acc1.jpg',
               tag: 'Heirloom Edition',
+              count: products.filter((x) => x.category === 'accessory').length || 60,
             },
           ].map((tile) => (
             <button
@@ -512,9 +518,14 @@ export default function HomePage() {
                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-stone-950/85 via-stone-950/25 to-transparent" />
-              <span className="absolute top-3 left-3 sm:top-4 sm:left-4 px-2.5 py-1 rounded-full bg-white/90 text-stone-900 text-[10px] font-extrabold uppercase tracking-wider backdrop-blur-sm">
-                {tile.tag}
-              </span>
+              <div className="absolute top-3 left-3 right-3 sm:top-4 sm:left-4 sm:right-4 flex items-center justify-between gap-2">
+                <span className="px-2.5 py-1 rounded-full bg-white/90 text-stone-900 text-[10px] font-extrabold uppercase tracking-wider backdrop-blur-sm">
+                  {tile.tag}
+                </span>
+                <span className="px-2.5 py-1 rounded-full bg-stone-950/85 text-amber-300 text-[10px] font-mono font-bold backdrop-blur-sm">
+                  {tile.count} Products
+                </span>
+              </div>
               <div className="absolute bottom-4 left-4 right-4 text-white">
                 <p className="text-[10px] uppercase tracking-widest text-amber-300 font-bold">
                   {tile.sub}
@@ -643,6 +654,171 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+
+      {/* Floating Product Compare Bar & Side-by-Side Compare Modal (Liksha Clothing Pattern) */}
+      {compareList.length > 0 && (
+        <div className="fixed bottom-16 md:bottom-4 left-1/2 -translate-x-1/2 z-40 w-[94%] max-w-2xl bg-stone-950 text-white rounded-2xl border border-amber-400/50 shadow-2xl px-4 py-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="px-2.5 py-1 rounded-full bg-amber-400 text-stone-950 text-xs font-extrabold">
+              Compare ({compareList.length}/4)
+            </span>
+            <div className="flex items-center gap-1.5 overflow-x-auto">
+              {compareList.map((cid) => {
+                const cp = products.find((x) => x.id === cid);
+                if (!cp) return null;
+                return (
+                  <img
+                    key={`cmp-thumb-${cid}`}
+                    src={cp.image_url}
+                    alt={cp.name}
+                    className="w-8 h-9 rounded-lg object-cover border border-stone-700 shrink-0"
+                  />
+                );
+              })}
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => setShowCompareModal(true)}
+              className="px-3.5 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-stone-950 text-xs font-extrabold uppercase tracking-wider"
+            >
+              Compare Now
+            </button>
+            <button
+              type="button"
+              onClick={clearCompare}
+              className="px-2.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-semibold text-stone-300"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showCompareModal && compareList.length > 0 && (
+        <div
+          className="fixed inset-0 z-50 bg-stone-950/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 overflow-y-auto"
+          onClick={() => setShowCompareModal(false)}
+        >
+          <div
+            className="bg-white rounded-3xl max-w-5xl w-full p-5 sm:p-7 shadow-2xl border border-stone-200 overflow-x-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <p className="text-[10px] uppercase tracking-widest font-extrabold text-rose-900">
+                  SIDE-BY-SIDE COMPARISON
+                </p>
+                <h3 className="text-lg sm:text-2xl font-serif font-bold text-stone-900">
+                  Compare Selected Creations ({compareList.length})
+                </h3>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearCompare();
+                    setShowCompareModal(false);
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-bold"
+                >
+                  Clear All
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowCompareModal(false)}
+                  className="px-3.5 py-1.5 rounded-xl bg-stone-900 text-white text-xs font-bold"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {compareList.map((cid) => {
+                const cp = products.find((x) => x.id === cid);
+                if (!cp) return null;
+                const defaultSz = cp.sizes?.includes('M') ? 'M' : cp.sizes?.[0] || 'Free Size';
+                const quote = getProductPriceForSize(cp, defaultSz);
+                const shade = extractProductShade(cp.name);
+                return (
+                  <div
+                    key={`cmp-col-${cp.id}`}
+                    className="rounded-2xl border border-stone-200 p-3.5 flex flex-col justify-between bg-stone-50/70 space-y-3"
+                  >
+                    <div>
+                      <div className="relative aspect-[4/5] rounded-xl overflow-hidden bg-white border border-stone-200 mb-3">
+                        <img src={cp.image_url} alt={cp.name} className="w-full h-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => toggleCompare(cp.id)}
+                          className="absolute top-2 right-2 px-2 py-0.5 rounded-full bg-stone-950/80 text-white text-[10px] font-bold"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                      <p className="text-[10px] font-mono text-stone-500">{cp.sku}</p>
+                      <Link
+                        href={`/products/${cp.id}`}
+                        onClick={() => setShowCompareModal(false)}
+                        className="font-serif font-bold text-sm text-stone-900 hover:text-rose-900 line-clamp-2 mt-0.5"
+                      >
+                        {lang === 'hi' && cp.name_hi ? cp.name_hi : cp.name}
+                      </Link>
+                      <div className="flex items-baseline gap-2 mt-2">
+                        <span className="text-base font-extrabold text-rose-900">
+                          {rupees(quote.price_paise)}
+                        </span>
+                        {quote.original_price_paise && (
+                          <span className="text-xs text-stone-400 line-through">
+                            {rupees(quote.original_price_paise)}
+                          </span>
+                        )}
+                      </div>
+                      <div className="mt-2.5 space-y-1 text-[11px] text-stone-600 border-t border-stone-200 pt-2">
+                        <p>
+                          <strong>Shade:</strong> {shade.label}
+                        </p>
+                        <p>
+                          <strong>Rating:</strong> {cp.rating.toFixed(1)} / 5 ({cp.reviews_count})
+                        </p>
+                        <p>
+                          <strong>Sizes:</strong>{' '}
+                          {cp.sizes.map((s) => formatEthnicSizeLabel(s, cp.category)).join(', ')}
+                        </p>
+                        <p>
+                          <strong>Stock:</strong>{' '}
+                          {cp.stock > 0 ? `${cp.stock} In Stock` : 'Pre-Order Only'}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={cp.stock <= 0}
+                      onClick={() =>
+                        addToCart({
+                          id: cp.id,
+                          name: cp.name,
+                          name_hi: cp.name_hi,
+                          price_paise: quote.price_paise,
+                          qty: 1,
+                          size: quote.size,
+                          image_url: cp.image_url,
+                          category: cp.category,
+                        })
+                      }
+                      className="w-full py-2 rounded-xl bg-rose-900 hover:bg-rose-950 text-white text-xs font-extrabold disabled:opacity-40"
+                    >
+                      + {t('addToCart')} ({formatEthnicSizeLabel(defaultSz, cp.category)})
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       <Footer />
     </div>

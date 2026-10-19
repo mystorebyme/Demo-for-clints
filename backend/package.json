@@ -5,7 +5,9 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js"
+    "dev": "node --watch server.js",
+    "lint": "node --check server.js routes/index.js controllers/orderController.js controllers/webhookController.js controllers/adminController.js services/orderService.js services/fallbackService.js services/rateLimit.js services/razorpay.js services/socket.js services/telegram.js config/env.js config/db.js config/redis.js",
+    "test": "NODE_ENV=test USE_IN_MEMORY_STORE=1 node --test tests/backend.test.js"
   },
   "dependencies": {
     "@fastify/cors": "^9.0.1",

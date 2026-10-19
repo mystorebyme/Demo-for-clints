@@ -5,14 +5,14 @@ const { redis } = require('./config/redis');
 const { initSocket } = require('./services/socket');
 const { expireOldOrders } = require('./services/orderService');
 
-async function main() {
-  const app = Fastify({ logger: true, trustProxy: true });
+async function buildApp(opts = {}) {
+  const app = Fastify({ logger: opts.logger ?? true, trustProxy: true });
 
   await app.register(require('@fastify/helmet'));
   await app.register(require('@fastify/cors'), {
     origin: env.FRONTEND_ORIGIN,
     methods: ['GET', 'POST', 'PUT', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'x-admin-token'],
+    allowedHeaders: ['Content-Type', 'x-admin-token', 'x-idempotency-key'],
   });
 
   // Keep the raw body: Razorpay's webhook signature is computed over the exact bytes.
@@ -27,6 +27,11 @@ async function main() {
   });
 
   await app.register(require('./routes'));
+  return app;
+}
+
+async function main() {
+  const app = await buildApp({ logger: true });
 
   await app.ready();
   initSocket(app.server);
@@ -48,7 +53,11 @@ async function main() {
   await app.listen({ port: env.PORT, host: '0.0.0.0' });
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}
+
+module.exports = { buildApp };

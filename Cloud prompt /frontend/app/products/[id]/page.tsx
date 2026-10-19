@@ -39,6 +39,9 @@ export default function ProductDetailPage() {
   const [selectedSize, setSelectedSize] = useState<string>(
     product?.sizes?.[0] || 'Free Size'
   );
+  const [activeImage, setActiveImage] = useState<string>(
+    product?.image_url || '/products/kurti1.jpg'
+  );
   const [qty, setQty] = useState<number>(1);
   const [addedFeedback, setAddedFeedback] = useState(false);
   const [showSizeModal, setShowSizeModal] = useState(false);
@@ -66,6 +69,7 @@ export default function ProductDetailPage() {
         if (d.product) {
           setProduct(d.product);
           setSelectedSize(d.product.sizes?.[0] || 'Free Size');
+          setActiveImage(d.product.image_url);
         }
         if (Array.isArray(d.reviews)) {
           setReviews(d.reviews);
@@ -209,30 +213,55 @@ export default function ProductDetailPage() {
         </nav>
 
         <div className="bg-white rounded-3xl border border-stone-200 shadow-sm p-6 sm:p-10 grid grid-cols-1 md:grid-cols-2 gap-8 lg:gap-12">
-          {/* Product Image */}
-          <div className="relative aspect-[4/5] rounded-2xl bg-stone-100 overflow-hidden border border-stone-200/60">
-            <img
-              src={product.image_url}
-              alt={displayName}
-              className="w-full h-full object-cover"
-            />
-            {product.badge && (
-              <span className="absolute top-4 left-4 px-3 py-1 rounded-full text-xs font-bold bg-rose-800 text-white shadow">
-                {lang === 'hi' && product.badge_hi ? product.badge_hi : product.badge}
-              </span>
+          {/* Product Image & Interactive Gallery */}
+          <div className="space-y-3">
+            <div className="relative aspect-[4/5] rounded-2xl bg-stone-100 overflow-hidden border border-stone-200/60">
+              <img
+                src={activeImage || product.image_url}
+                alt={displayName}
+                className="w-full h-full object-cover transition-all duration-300"
+              />
+              {product.badge && (
+                <span className="absolute top-4 left-4 px-3 py-1 rounded-full text-xs font-bold bg-rose-800 text-white shadow">
+                  {lang === 'hi' && product.badge_hi ? product.badge_hi : product.badge}
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => toggleWishlist(product.id)}
+                className={`absolute top-4 right-4 w-11 h-11 rounded-full flex items-center justify-center text-lg shadow-md transition ${
+                  isWishlisted
+                    ? 'bg-rose-600 text-white'
+                    : 'bg-white/95 text-stone-700 hover:text-rose-600'
+                }`}
+                title={isWishlisted ? 'Saved in Wishlist' : 'Save to Wishlist'}
+              >
+                {isWishlisted ? '♥' : '♡'}
+              </button>
+            </div>
+
+            {product.gallery && product.gallery.length > 1 && (
+              <div className="flex items-center gap-3 overflow-x-auto pb-1">
+                {product.gallery.map((imgUrl, idx) => (
+                  <button
+                    key={`${imgUrl}-${idx}`}
+                    type="button"
+                    onClick={() => setActiveImage(imgUrl)}
+                    className={`w-20 h-24 rounded-xl overflow-hidden border-2 transition shrink-0 ${
+                      (activeImage || product.image_url) === imgUrl
+                        ? 'border-rose-900 shadow-sm scale-105'
+                        : 'border-stone-200 opacity-75 hover:opacity-100'
+                    }`}
+                  >
+                    <img
+                      src={imgUrl}
+                      alt={`${displayName} view ${idx + 1}`}
+                      className="w-full h-full object-cover"
+                    />
+                  </button>
+                ))}
+              </div>
             )}
-            <button
-              type="button"
-              onClick={() => toggleWishlist(product.id)}
-              className={`absolute top-4 right-4 w-11 h-11 rounded-full flex items-center justify-center text-lg shadow-md transition ${
-                isWishlisted
-                  ? 'bg-rose-600 text-white'
-                  : 'bg-white/95 text-stone-700 hover:text-rose-600'
-              }`}
-              title={isWishlisted ? 'Saved in Wishlist' : 'Save to Wishlist'}
-            >
-              {isWishlisted ? '♥' : '♡'}
-            </button>
           </div>
 
           {/* Product Details */}

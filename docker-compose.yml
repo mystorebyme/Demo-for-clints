@@ -2,18 +2,18 @@ services:
   postgres-db:
     image: postgres:15-alpine
     container_name: fashion_postgres
-    restart: always
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
-    ports:
-      - "127.0.0.1:5432:5432"
+      POSTGRES_USER: ${POSTGRES_USER:-fashion_dev}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev_only_change_in_prod_987654}
+      POSTGRES_DB: ${POSTGRES_DB:-fashion_store_db}
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    networks:
+      - internal-net
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-fashion_dev} -d $${POSTGRES_DB:-fashion_store_db}"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -21,9 +21,9 @@ services:
   redis-cache:
     image: redis:7-alpine
     container_name: fashion_redis
-    restart: always
-    ports:
-      - "127.0.0.1:6379:6379"
+    restart: unless-stopped
+    networks:
+      - internal-net
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -33,38 +33,70 @@ services:
   backend-api:
     build: ./backend
     container_name: fashion_backend
-    restart: always
+    restart: unless-stopped
     depends_on:
       postgres-db:
         condition: service_healthy
       redis-cache:
         condition: service_healthy
     environment:
-      NODE_ENV: ${NODE_ENV}
+      NODE_ENV: ${NODE_ENV:-production}
       PORT: 5000
-      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres-db:5432/${POSTGRES_DB}
+      DATABASE_URL: postgres://${POSTGRES_USER:-fashion_dev}:${POSTGRES_PASSWORD:-dev_only_change_in_prod_987654}@postgres-db:5432/${POSTGRES_DB:-fashion_store_db}
       REDIS_URL: redis://redis-cache:6379
-      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN}
-      ADMIN_TOKEN: ${ADMIN_TOKEN}
-      PAYMENT_MODE: ${PAYMENT_MODE}
-      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID}
-      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET}
-      RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET}
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-dev_admin_token_replace_me_123456}
+      PAYMENT_MODE: ${PAYMENT_MODE:-razorpay}
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
+      RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      ORDER_EXPIRY_MINUTES: ${ORDER_EXPIRY_MINUTES:-4}
     ports:
-      - "5000:5000"
+      - "${BACKEND_PORT:-5000}:5000"
+    networks:
+      - internal-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5000/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  payment-worker:
+    build: ./automation-worker
+    container_name: fashion_payment_worker
+    restart: unless-stopped
+    depends_on:
+      backend-api:
+        condition: service_healthy
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      DRY_RUN: ${DRY_RUN:-false}
+      RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
+    networks:
+      - internal-net
 
   frontend:
     build:
       context: ./frontend
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
     container_name: fashion_frontend
-    restart: always
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      BACKEND_INTERNAL_URL: http://backend-api:5000
     depends_on:
-      - backend-api
+      backend-api:
+        condition: service_healthy
     ports:
-      - "3000:3000"
+      - "${FRONTEND_PORT:-3000}:3000"
+    networks:
+      - internal-net
+
+networks:
+  internal-net:
+    driver: bridge
 
 volumes:
   pgdata:

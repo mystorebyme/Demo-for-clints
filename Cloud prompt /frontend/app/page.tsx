@@ -1,12 +1,10 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 import ProductCard from '../components/ProductCard';
 import {
-  DEMO_PRODUCTS,
   filterAndSortProducts,
   paginateProducts,
   Product,
@@ -18,7 +16,9 @@ import { useStore } from '../lib/store';
 export default function HomePage() {
   const { lang, appliedCoupon, setAppliedCoupon, t } = useStore();
 
-  const [products, setProducts] = useState<Product[]>(DEMO_PRODUCTS);
+  // Products are fetched exclusively from the backend /api/products endpoint (not hardcoded in frontpage code)
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loadingCatalog, setLoadingCatalog] = useState(true);
   const [category, setCategory] = useState<ProductCategory | 'all'>('all');
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<SortOption>('featured');
@@ -26,14 +26,23 @@ export default function HomePage() {
   const [page, setPage] = useState(1);
 
   useEffect(() => {
+    let active = true;
+    setLoadingCatalog(true);
     fetch('/api/products', { cache: 'no-store' })
       .then((r) => r.json())
       .then((data) => {
-        if (Array.isArray(data.products) && data.products.length > 0) {
+        if (!active) return;
+        if (Array.isArray(data.products)) {
           setProducts(data.products);
         }
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => {
+        if (active) setLoadingCatalog(false);
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   const filtered = useMemo(
@@ -55,7 +64,7 @@ export default function HomePage() {
 
   const selectCategoryAndScroll = (cat: ProductCategory | 'all') => {
     setCategory(cat);
-    const el = document.getElementById('catalog');
+    const el = document.getElementById('collection');
     if (el) el.scrollIntoView({ behavior: 'smooth' });
   };
 
@@ -63,7 +72,7 @@ export default function HomePage() {
     <div className="min-h-screen flex flex-col bg-[#faf7f2]">
       <Header />
 
-      {/* Mobile-First Quick Category Story Circles (Visible on Mobile like Myntra/Nykaa) */}
+      {/* Mobile-First Quick Category Story Circles */}
       <div className="md:hidden bg-white border-b border-stone-200 px-3 py-3 overflow-x-auto">
         <div className="flex items-center justify-between gap-3 min-w-max">
           {[
@@ -125,7 +134,6 @@ export default function HomePage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-16 lg:py-20 grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-center">
           <div className="lg:col-span-6 space-y-4 sm:space-y-6">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-400/15 border border-amber-300/30 text-amber-200 text-[11px] sm:text-xs font-semibold uppercase tracking-widest">
-              <span>✦</span>
               <span>{t('heroBadge')}</span>
             </div>
 
@@ -139,17 +147,18 @@ export default function HomePage() {
 
             <div className="flex flex-wrap gap-2.5 sm:gap-3.5 pt-1">
               <a
-                href="#catalog"
-                className="px-5 sm:px-7 py-3 sm:py-4 rounded-2xl bg-amber-400 hover:bg-amber-300 text-stone-950 font-extrabold text-xs sm:text-sm shadow-lg transition-all"
+                href="#collection"
+                className="px-5 sm:px-7 py-3 sm:py-4 rounded-2xl bg-amber-400 hover:bg-amber-300 text-stone-950 font-extrabold text-xs sm:text-sm uppercase tracking-wider shadow-lg transition-all"
               >
-                {t('shopNow')} →
+                {t('shopNow')}
               </a>
-              <Link
-                href="/track"
-                className="px-4 sm:px-6 py-3 sm:py-4 rounded-2xl bg-white/10 hover:bg-white/20 border border-white/25 text-white font-semibold text-xs sm:text-sm backdrop-blur-sm transition-all"
+              <button
+                type="button"
+                onClick={() => selectCategoryAndScroll('kurti')}
+                className="px-4 sm:px-6 py-3 sm:py-4 rounded-2xl bg-white/10 hover:bg-white/20 border border-white/25 text-white font-semibold text-xs sm:text-sm uppercase tracking-wider backdrop-blur-sm transition-all"
               >
-                📦 {t('trackOrderNav')}
-              </Link>
+                {t('categoryKurti')}
+              </button>
             </div>
 
             {/* Trust Metrics */}
@@ -167,7 +176,7 @@ export default function HomePage() {
                 </p>
               </div>
               <div>
-                <p className="text-lg sm:text-2xl font-serif font-bold text-amber-300">4.9 ★</p>
+                <p className="text-lg sm:text-2xl font-serif font-bold text-amber-300">4.9 / 5</p>
                 <p className="text-stone-300 mt-0.5">
                   {lang === 'hi' ? '12,400+ संतुष्ट ग्राहक' : '12,400+ Happy Patrons'}
                 </p>
@@ -233,11 +242,11 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Interactive Privilege Code Bar (1-Tap Apply) */}
+      {/* Interactive Privilege Code Bar (1-Tap Apply, Zero Emojis) */}
       <section className="bg-white border-b border-stone-200 py-3 px-3 sm:px-4 shadow-sm">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5 text-xs font-bold text-stone-800">
-            <span>🎟️</span>
+          <div className="flex items-center gap-2 text-xs font-bold text-stone-800">
+            <span className="inline-block w-2 h-2 rounded-full bg-amber-600" />
             <span>
               {lang === 'hi'
                 ? 'फेस्टिव कूपन (टैप करके लागू करें):'
@@ -246,10 +255,10 @@ export default function HomePage() {
           </div>
           <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
             {[
-              { code: 'FIRST10', label: 'FIRST10 • 10% OFF' },
-              { code: 'DIWALI20', label: 'DIWALI20 • 20% OFF' },
-              { code: 'JAIPUR15', label: 'JAIPUR15 • 15% OFF' },
-              { code: 'ROYAL250', label: 'ROYAL250 • ₹250 OFF' },
+              { code: 'FIRST10', label: 'FIRST10 - 10% OFF' },
+              { code: 'DIWALI20', label: 'DIWALI20 - 20% OFF' },
+              { code: 'JAIPUR15', label: 'JAIPUR15 - 15% OFF' },
+              { code: 'ROYAL250', label: 'ROYAL250 - ₹250 OFF' },
             ].map((c) => {
               const active = appliedCoupon === c.code;
               return (
@@ -263,7 +272,7 @@ export default function HomePage() {
                       : 'bg-amber-50 hover:bg-amber-100 text-rose-950 border-amber-300'
                   }`}
                 >
-                  {active ? `✓ ${c.code}` : c.label}
+                  {active ? `APPLIED: ${c.code}` : c.label}
                 </button>
               );
             })}
@@ -272,8 +281,8 @@ export default function HomePage() {
       </section>
 
       {/* Catalog Controls & 2-Column Mobile / 4-Column Desktop Product Grid */}
-      <main id="catalog" className="flex-1 max-w-7xl mx-auto w-full px-3 sm:px-6 lg:px-8 py-6 sm:py-10">
-        <div className="bg-white rounded-2xl sm:rounded-3xl border border-stone-200 p-3.5 sm:p-5 mb-6 sm:mb-8 shadow-sm space-y-3.5">
+      <main id="collection" className="flex-1 max-w-7xl mx-auto w-full px-3 sm:px-6 lg:px-8 py-6 sm:py-10">
+        <div id="catalog" className="bg-white rounded-2xl sm:rounded-3xl border border-stone-200 p-3.5 sm:p-5 mb-6 sm:mb-8 shadow-sm space-y-3.5">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
             {/* Category Tabs (Horizontally Scrollable on Mobile) */}
             <div
@@ -365,7 +374,23 @@ export default function HomePage() {
         </div>
 
         {/* 2-Column Mobile Grid / 4-Column Desktop Grid */}
-        {paginated.items.length === 0 ? (
+        {loadingCatalog && products.length === 0 ? (
+          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
+            {Array.from({ length: 8 }).map((_, idx) => (
+              <div
+                key={idx}
+                className="bg-white rounded-2xl sm:rounded-3xl border border-stone-200 overflow-hidden animate-pulse"
+              >
+                <div className="aspect-[3/4] sm:aspect-[4/5] bg-stone-200" />
+                <div className="p-4 space-y-2">
+                  <div className="h-3 bg-stone-200 rounded w-1/3" />
+                  <div className="h-4 bg-stone-200 rounded w-3/4" />
+                  <div className="h-8 bg-stone-200 rounded w-full mt-3" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : paginated.items.length === 0 ? (
           <div className="bg-white rounded-3xl border border-stone-200 p-10 text-center">
             <p className="text-stone-600 font-medium mb-3">
               No matching pieces found in this filter.
@@ -399,7 +424,7 @@ export default function HomePage() {
               onClick={() => setPage((prev) => Math.max(1, prev - 1))}
               className="px-4 py-2 rounded-xl border border-stone-300 bg-white text-xs font-semibold text-stone-700 disabled:opacity-40 hover:bg-stone-50"
             >
-              ← {t('previous')}
+              {t('previous')}
             </button>
             <span className="text-xs font-bold text-stone-700 px-3 py-2">
               {t('page')} {paginated.currentPage} {t('of')} {paginated.totalPages}
@@ -410,7 +435,7 @@ export default function HomePage() {
               onClick={() => setPage((prev) => Math.min(paginated.totalPages, prev + 1))}
               className="px-4 py-2 rounded-xl border border-stone-300 bg-white text-xs font-semibold text-stone-700 disabled:opacity-40 hover:bg-stone-50"
             >
-              {t('next')} →
+              {t('next')}
             </button>
           </div>
         )}
@@ -421,7 +446,7 @@ export default function HomePage() {
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2 mb-6">
           <div>
             <p className="text-[10px] sm:text-[11px] uppercase tracking-[0.22em] font-extrabold text-rose-900">
-              KURTIS • ARTISAN BAGS • JADAU JEWELLERY
+              KURTIS / ARTISAN BAGS / JADAU JEWELLERY
             </p>
             <h2 className="text-xl sm:text-3xl font-serif font-bold text-stone-900 mt-1">
               {lang === 'hi' ? 'रॉयल जयपुर कलेक्शंस' : 'Shop by Royal Collection'}
@@ -434,21 +459,21 @@ export default function HomePage() {
             {
               id: 'kurti' as const,
               title: lang === 'hi' ? 'शाही कुर्तियाँ और अनारकली' : 'Royal Kurtis & Anarkalis',
-              sub: 'Sanganeri Mulmul • Chanderi Zardozi • Chikankari',
+              sub: 'Sanganeri Mulmul / Chanderi Zardozi / Chikankari',
               img: '/products/kurti2.jpg',
               tag: 'Festive Bestsellers',
             },
             {
               id: 'bag' as const,
               title: lang === 'hi' ? 'दस्तकारी बैग्स और पोटली' : 'Artisan Bags & Bridal Potlis',
-              sub: 'Kutchi Abhla Mirror-Work • Dabu Totes • Velvet Potlis',
+              sub: 'Kutchi Abhla Mirror-Work / Dabu Totes / Velvet Potlis',
               img: '/products/bag2.jpg',
               tag: 'Handcrafted Guild',
             },
             {
               id: 'accessory' as const,
               title: lang === 'hi' ? 'बीकानेरी जड़ाऊ और दुपट्टे' : 'Jadau Jewellery & Silk Drapes',
-              sub: 'Meenakari Jhumkas • Polki Chokers • Ajrakh Silk',
+              sub: 'Meenakari Jhumkas / Polki Chokers / Ajrakh Silk',
               img: '/products/acc1.jpg',
               tag: 'Heirloom Edition',
             },
@@ -474,9 +499,6 @@ export default function HomePage() {
                 </p>
                 <h3 className="text-lg sm:text-2xl font-serif font-bold mt-0.5 flex items-center justify-between">
                   <span>{tile.title}</span>
-                  <span className="text-amber-300 group-hover:translate-x-1 transition-transform">
-                    →
-                  </span>
                 </h3>
               </div>
             </button>
@@ -509,7 +531,7 @@ export default function HomePage() {
 
           <div className="lg:col-span-7 space-y-4 sm:space-y-5">
             <span className="text-xs uppercase tracking-[0.25em] font-extrabold text-rose-900">
-              THE MAISON • JOHARI BAZAR, JAIPUR
+              THE MAISON / JOHARI BAZAR, JAIPUR
             </span>
             <h2 className="text-2xl sm:text-4xl font-serif font-bold text-stone-900 leading-tight">
               {lang === 'hi'
@@ -525,7 +547,7 @@ export default function HomePage() {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 pt-2">
               <div className="p-3.5 sm:p-4 rounded-2xl bg-stone-50 border border-stone-200">
                 <p className="text-xs font-extrabold text-rose-900 uppercase tracking-wider">
-                  ✨ 100% Handloom & Craft
+                  100% Handloom & Craft
                 </p>
                 <p className="text-xs text-stone-600 mt-1">
                   Directly sourced from master block-printers & karigars in Jaipur, Lucknow & Bhuj.
@@ -533,18 +555,18 @@ export default function HomePage() {
               </div>
               <div className="p-3.5 sm:p-4 rounded-2xl bg-stone-50 border border-stone-200">
                 <p className="text-xs font-extrabold text-rose-900 uppercase tracking-wider">
-                  🧾 Official GST Tax Bill
+                  Official GST Tax Bill
                 </p>
                 <p className="text-xs text-stone-600 mt-1">
-                  Instant downloadable GST Invoice & email receipt with every order.
+                  Instant downloadable CGST Rule 46(b) Invoice & email receipt with every order.
                 </p>
               </div>
               <div className="p-3.5 sm:p-4 rounded-2xl bg-stone-50 border border-stone-200">
                 <p className="text-xs font-extrabold text-rose-900 uppercase tracking-wider">
-                  🚚 Insured Express Delivery
+                  Insured Express Delivery
                 </p>
                 <p className="text-xs text-stone-600 mt-1">
-                  Real-time shipment tracking with 7-day hassle-free size exchange.
+                  Real-time 12-digit AWB shipment tracking with 7-day hassle-free size exchange.
                 </p>
               </div>
             </div>

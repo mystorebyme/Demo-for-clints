@@ -122,14 +122,14 @@ export default function InvoicePage({ params }: { params: { orderId: string } })
             href={`/order/${order.orderId}`}
             className="px-4 py-2 rounded-xl bg-white hover:bg-stone-100 text-stone-800 border border-stone-300 text-xs font-bold shadow-sm transition"
           >
-            ← Back to Order #{order.orderId}
+            Back to Order {order.orderId}
           </Link>
           {order.trackingId && (
             <Link
               href={`/track?id=${encodeURIComponent(order.trackingId)}`}
               className="px-4 py-2 rounded-xl bg-white hover:bg-stone-100 text-rose-900 border border-stone-300 text-xs font-bold shadow-sm transition"
             >
-              📦 Track Shipment ({order.trackingId})
+              Track Shipment ({order.trackingId})
             </Link>
           )}
         </div>
@@ -140,7 +140,7 @@ export default function InvoicePage({ params }: { params: { orderId: string } })
             onClick={() => window.print()}
             className="px-5 py-2.5 rounded-xl bg-rose-900 hover:bg-rose-950 text-white text-xs sm:text-sm font-extrabold shadow-md transition flex items-center gap-2"
           >
-            <span>🖨️ Print / Save GST Invoice as PDF</span>
+            <span>Print / Save GST Invoice as PDF</span>
           </button>
         </div>
       </div>
@@ -368,9 +368,20 @@ export default function InvoicePage({ params }: { params: { orderId: string } })
                 7-day hassle-free size exchange available with original handloom tags intact.
               </li>
               <li>
-                Authentic Jaipur Handloom & Craftsmanship • Tax is not payable under Reverse Charge.
+                Authentic Jaipur Handloom & Craftsmanship | Tax is not payable under Reverse Charge.
               </li>
             </ul>
+            <div className="mt-3 p-3 rounded-xl bg-stone-50 border border-stone-200 text-[10px] text-stone-600 space-y-1">
+              <p className="font-bold text-stone-800 uppercase tracking-wider">
+                Reference & Invoice Numbering Legend (CGST Rule 46b):
+              </p>
+              <p>
+                <strong>Order ID ({order.orderId}):</strong> <code>ORD</code> (Order) + <code>YYMMDD</code> (6-Digit Date) + <code>08</code> (Rajasthan State Code) + <code>NNNN</code> (4-Digit Serial)
+              </p>
+              <p>
+                <strong>Invoice No ({order.invoiceNumber}):</strong> <code>INV</code> (Tax Invoice) + <code>KC</code> (Kurti Couture Series) + <code>2026</code> (FY 2026-27) + <code>NNNN</code> (4-Digit Consecutive Serial, 16 chars max)
+              </p>
+            </div>
           </div>
 
           <div className="space-y-2 text-xs sm:pl-8">

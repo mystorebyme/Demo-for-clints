@@ -22,6 +22,19 @@ function sanitizeText(raw, maxLen = 250) {
     .slice(0, maxLen);
 }
 
+let nextBackendSerial = 1002;
+function generateStructuredOrderAndInvoice() {
+  const now = new Date();
+  const yy = String(now.getFullYear()).slice(-2);
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  const serial = String(nextBackendSerial++).padStart(4, '0');
+  return {
+    orderId: `ORD-${yy}${mm}${dd}-08-${serial}`,
+    invoiceNumber: `INV-KC-2026-${serial}`,
+  };
+}
+
 function maskPhone(phone) {
   const digits = String(phone || '').replace(/\D/g, '');
   if (digits.length < 4) return '******';
@@ -222,8 +235,7 @@ async function createOrder(req, reply) {
   const { couponCode, discountPaise } = computeCouponDiscount(requestedCoupon, subtotalPaise);
   const amountPaise = Math.max(100, subtotalPaise - discountPaise);
 
-  const orderId = `ORD${crypto.randomBytes(8).toString('hex').toUpperCase()}`;
-  const invoiceNumber = `ZJ/2026-27/${orderId.slice(-6)}`;
+  const { orderId, invoiceNumber } = generateStructuredOrderAndInvoice();
 
   const sessionLockKey = `lock:qr_session:${orderId}`;
   await redis

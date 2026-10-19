@@ -109,7 +109,7 @@ export default function CartPage() {
         {cart.length === 0 ? (
           <div className="bg-white rounded-3xl border border-stone-200 p-10 sm:p-16 text-center shadow-sm">
             <div className="w-16 h-16 mx-auto rounded-full bg-rose-50 text-rose-800 flex items-center justify-center text-2xl mb-4">
-              🛍️
+              
             </div>
             <h2 className="text-xl font-bold text-stone-900 mb-2">{t('emptyCartTitle')}</h2>
             <p className="text-stone-500 text-sm mb-6 max-w-md mx-auto">
@@ -200,7 +200,7 @@ export default function CartPage() {
               {/* Promo / Coupon Code Input */}
               <div className="bg-stone-50 rounded-2xl p-4 border border-stone-200">
                 <label className="block text-xs font-bold uppercase tracking-wider text-stone-600 mb-2">
-                  🎟️ {t('couponCode')}
+                   {t('couponCode')}
                 </label>
                 <div className="flex gap-2">
                   <input
@@ -231,12 +231,12 @@ export default function CartPage() {
 
                 {couponMessage && (
                   <p className="mt-2 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1.5">
-                    ✓ {couponMessage}
+                     {couponMessage}
                   </p>
                 )}
                 {couponError && (
                   <p className="mt-2 text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
-                    ⚠️ {couponError}
+                     {couponError}
                   </p>
                 )}
 
@@ -269,7 +269,7 @@ export default function CartPage() {
                               </span>
                             </div>
                             <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-rose-100 text-rose-800 shrink-0">
-                              {isSelected ? '✓ Applied' : 'Apply'}
+                              {isSelected ? ' Applied' : 'Apply'}
                             </span>
                           </button>
                         );

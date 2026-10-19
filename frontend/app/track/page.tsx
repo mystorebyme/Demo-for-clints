@@ -33,15 +33,15 @@ type TrackedOrder = {
 };
 
 const TRACKING_STEPS = [
-  { key: 'ORDER_PLACED', label: 'Order Confirmed', icon: '✓' },
-  { key: 'PACKED', label: 'Packed at Atelier', icon: '📦' },
-  { key: 'SHIPPED', label: 'Shipped via Air', icon: '🚚' },
-  { key: 'OUT_FOR_DELIVERY', label: 'Out for Delivery', icon: '🛵' },
-  { key: 'DELIVERED', label: 'Delivered', icon: '🎉' },
+  { key: 'ORDER_PLACED', label: 'Order Confirmed', stepCode: '01' },
+  { key: 'PACKED', label: 'Packed at Atelier', stepCode: '02' },
+  { key: 'SHIPPED', label: 'Shipped via Air', stepCode: '03' },
+  { key: 'OUT_FOR_DELIVERY', label: 'Out for Delivery', stepCode: '04' },
+  { key: 'DELIVERED', label: 'Delivered', stepCode: '05' },
 ];
 
 export default function TrackOrderPage() {
-  const { t } = useStore();
+  const { t, lang } = useStore();
   const [queryId, setQueryId] = useState('');
   const [order, setOrder] = useState<TrackedOrder | null>(null);
   const [loading, setLoading] = useState(false);
@@ -61,7 +61,7 @@ export default function TrackOrderPage() {
         setOrder(null);
         setError(
           data.error ||
-            'Please enter the valid Tracking ID sent to your email upon order confirmation.'
+            'Please enter the valid 12-digit Tracking ID sent to your email upon order confirmation.'
         );
       } else {
         setOrder(data);
@@ -110,7 +110,7 @@ export default function TrackOrderPage() {
         <div className="bg-white rounded-3xl border border-stone-200 p-5 sm:p-8 shadow-sm">
           <div className="max-w-2xl">
             <span className="inline-block px-3 py-1 rounded-full bg-rose-100 text-rose-900 text-xs font-extrabold uppercase tracking-wider mb-2">
-              📦 Live Shipment Tracking
+              Live Shipment Tracking
             </span>
             <h1 className="text-xl sm:text-3xl font-serif font-extrabold text-stone-900">
               {t('trackOrderTitle')}
@@ -142,6 +142,29 @@ export default function TrackOrderPage() {
             </button>
           </form>
 
+          {/* 12-Digit AWB Structure Legend + Sample Button */}
+          <div className="mt-4 pt-4 border-t border-stone-100 flex flex-wrap items-center justify-between gap-2 text-xs text-stone-600">
+            <div>
+              <span className="font-bold text-stone-800">Format:</span>{' '}
+              <code className="font-mono bg-stone-100 px-1.5 py-0.5 rounded">TRK-KC-YYMMDDSSPPPP</code>{' '}
+              <span className="text-[11px] text-stone-500">
+                (6-Digit Date + 08 State Code + 4-Digit Security PIN)
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setQueryId('TRK-KC-261019081001');
+                lookupOrder('TRK-KC-261019081001');
+              }}
+              className="text-[11px] font-bold text-amber-900 hover:text-rose-900 underline"
+            >
+              {lang === 'hi'
+                ? 'सैंपल ट्रैकिंग देखें: TRK-KC-261019081001'
+                : 'Load Sample Shipment: TRK-KC-261019081001'}
+            </button>
+          </div>
+
           {error && (
             <div className="mt-4 p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs sm:text-sm font-medium">
               {error}
@@ -157,7 +180,7 @@ export default function TrackOrderPage() {
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-xs uppercase tracking-wider font-bold text-stone-400">
-                    Tracking ID
+                    12-Digit AWB Tracking ID
                   </span>
                   <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-xs font-extrabold">
                     {order.paymentStatus}
@@ -170,7 +193,7 @@ export default function TrackOrderPage() {
                   {order.trackingId}
                 </h2>
                 <p className="text-xs text-stone-500 mt-1 font-mono">
-                  Order Reference: <strong>{order.orderId}</strong> • Amount:{' '}
+                  Order Reference: <strong>{order.orderId}</strong> | Amount:{' '}
                   <strong>{rupees(order.amountPaise)}</strong>
                 </p>
               </div>
@@ -184,18 +207,24 @@ export default function TrackOrderPage() {
                   <span className="text-stone-500">{t('estimatedDelivery')}: </span>
                   <strong className="text-emerald-800">{order.estimatedDelivery}</strong>
                 </div>
-                <div className="pt-1">
+                <div className="pt-1 flex items-center gap-3">
+                  <Link
+                    href={`/order/${order.orderId}`}
+                    className="inline-flex items-center gap-1 text-stone-900 font-extrabold hover:underline"
+                  >
+                    Order Details
+                  </Link>
                   <Link
                     href={`/order/${order.orderId}/invoice`}
                     className="inline-flex items-center gap-1 text-rose-900 font-extrabold hover:underline"
                   >
-                    📄 Download GST Tax Invoice →
+                    Download GST Tax Invoice
                   </Link>
                 </div>
               </div>
             </div>
 
-            {/* Visual 5-Stage Progress Stepper */}
+            {/* Visual 5-Stage Progress Stepper (Zero Emojis) */}
             <div>
               <h3 className="text-xs font-extrabold uppercase tracking-wider text-stone-400 mb-3">
                 Shipment Progress
@@ -217,7 +246,9 @@ export default function TrackOrderPage() {
                       }`}
                     >
                       <div className="flex items-center justify-between sm:mb-1.5 gap-2">
-                        <span className="text-base sm:text-lg">{step.icon}</span>
+                        <span className="text-xs font-mono font-extrabold px-2 py-0.5 rounded bg-black/10">
+                          {step.stepCode}
+                        </span>
                         <span className="text-[10px] font-mono font-bold uppercase">
                           Step {index + 1}/5
                         </span>
@@ -233,7 +264,7 @@ export default function TrackOrderPage() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8 pt-2 border-t border-stone-200">
               <div className="lg:col-span-2 space-y-4">
                 <h3 className="text-sm font-bold text-stone-900">
-                  📦 {t('trackingTimelineTitle')}
+                  {t('trackingTimelineTitle')}
                 </h3>
 
                 {order.trackingHistory && order.trackingHistory.length > 0 ? (
@@ -243,9 +274,9 @@ export default function TrackOrderPage() {
                         <span
                           className={`absolute -left-2.5 flex items-center justify-center w-5 h-5 rounded-full ring-4 ring-white ${
                             i === 0 ? 'bg-rose-900 text-white' : 'bg-emerald-600 text-white'
-                          } text-[10px] font-bold`}
+                          } text-[9px] font-mono font-bold`}
                         >
-                          ✓
+                          {order.trackingHistory.length - i}
                         </span>
                         <div className="p-3.5 rounded-2xl bg-stone-50 border border-stone-200/80">
                           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -262,7 +293,7 @@ export default function TrackOrderPage() {
                             </span>
                           </div>
                           <p className="text-xs text-rose-800 font-semibold mt-0.5">
-                            📍 {ev.location}
+                            Location: {ev.location}
                           </p>
                           <p className="text-xs text-stone-600 mt-1">{ev.note}</p>
                         </div>
@@ -297,14 +328,14 @@ export default function TrackOrderPage() {
                   {order.items?.map((item, idx) => (
                     <div key={idx} className="flex justify-between gap-2 text-stone-700">
                       <span>
-                        {item.name} ({item.size}) × {item.qty}
+                        {item.name} ({item.size}) x {item.qty}
                       </span>
-                      <span className="font-bold text-stone-900 shrink-0">
+                      <span className="font-bold text-stone-900">
                         {rupees(item.price_paise * item.qty)}
                       </span>
                     </div>
                   ))}
-                  <div className="border-t border-stone-200 pt-2 flex justify-between font-extrabold text-stone-900 text-sm">
+                  <div className="border-t border-stone-200 pt-2 flex justify-between font-extrabold text-stone-900">
                     <span>Total Paid</span>
                     <span className="text-rose-900">{rupees(order.amountPaise)}</span>
                   </div>

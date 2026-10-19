@@ -23,8 +23,10 @@ import {
   confirmServerOrder,
   createLiveProduct,
   createServerOrder,
+  explainReferenceCodes,
   findServerOrderByOrderOrTrackingId,
   getAdminAnalyticsSummary,
+  getCustomerAccount,
   getLiveProductById,
   getOrderEmailReceipt,
   getStoreProfile,
@@ -35,6 +37,7 @@ import {
   updateLiveProduct,
   updateServerOrderTracking,
   updateStoreProfile,
+  upsertCustomerAccount,
   upsertServerCoupon,
   validateCartServerSide,
   verifyAdminTokenHeader,
@@ -235,7 +238,32 @@ describe('Phase 1 Frontend — Zero-Trust Pricing, Coupons, Email Receipt Dispat
     assert.equal(order1.subtotalPaise, 159800);
     assert.equal(order1.discountPaise, 15980);
     assert.equal(order1.amountPaise, 143820);
-    assert.equal(order1.invoiceNumber.startsWith('INV-KC-2026-'), true);
+    assert.equal(/^ORD-\d{6}-08-\d{4}$/.test(order1.orderId), true);
+    assert.equal(/^INV-KC-2026-\d{4}$/.test(order1.invoiceNumber), true);
+
+    const explained = explainReferenceCodes(
+      order1.orderId,
+      order1.invoiceNumber,
+      'TRK-KC-261019081002'
+    );
+    assert.equal(explained.orderFormat.segments.length, 4);
+    assert.equal(explained.invoiceFormat.segments.length, 4);
+    assert.equal(explained.trackingFormat.segments.length, 4);
+
+    // Gmail / Email Account Sync returns orders + saved address + wishlist
+    const acct = upsertCustomerAccount({
+      email: 'ananya.verma@example.com',
+      name: 'Ananya Verma',
+      phone: '9876543210',
+      pincode: '302001',
+      cityState: 'Jaipur, Rajasthan',
+      address: '42 MI Road, C-Scheme',
+      wishlist: [1, 7],
+    });
+    assert.equal(acct?.profile.email, 'ananya.verma@example.com');
+    assert.equal(acct?.orders.length, 1);
+    assert.equal(acct?.wishlistProducts.length, 2);
+    assert.equal(Boolean(getCustomerAccount('priya.sharma@gmail.com')?.orders.length), true);
 
     // Confirm payment -> generates 12-hex Tracking ID (TRK-KC-XXXXXXXXXXXX), sends Email Receipt & deducts stock
     const confirm1 = confirmServerOrder(order1.orderId, {

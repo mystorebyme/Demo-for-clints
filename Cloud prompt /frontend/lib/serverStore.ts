@@ -135,17 +135,37 @@ export type ServerOrderRecord = {
   stock_deducted?: boolean;
 };
 
+export type CustomerAccountRecord = {
+  email: string;
+  name: string;
+  phone: string;
+  pincode: string;
+  cityState: string;
+  address: string;
+  wishlist: number[];
+  updated_at: string;
+};
+
+export type ReferenceCodeSegment = {
+  segment: string;
+  digits: string;
+  meaning_en: string;
+  meaning_hi: string;
+};
+
 type GlobalStore = {
   storeProfile: StoreProfile;
   products: LiveProduct[];
   coupons: Map<string, CouponRecord>;
   reviews: Map<number, ProductReview[]>;
   orders: Map<string, ServerOrderRecord>;
+  accounts: Map<string, CustomerAccountRecord>;
   emails: EmailReceiptRecord[];
   idempotencyMap: Map<string, string>;
   paymentIds: Set<string>;
   notificationTarget: string;
   fallbackTier: 1 | 2 | 3 | 4;
+  nextSerialNumber: number;
 };
 
 const globalRef = globalThis as unknown as { __FASHION_SERVER_STORE__?: GlobalStore };
@@ -239,9 +259,9 @@ const DEMO_SEED_ORDER: ServerOrderRecord = {
   gst_paise: 6088,
   supply_type: 'INTRA_STATE',
   amount_paise: 127840,
-  invoice_number: 'INV/ZRJ/26-27/1001',
+  invoice_number: 'INV-KC-2026-1001',
   status: 'CONFIRMED',
-  tracking_id: 'TRK-KC-9F4A7C2E1001',
+  tracking_id: 'TRK-KC-261019081001',
   courier_name: 'BlueDart Royal Priority',
   fulfillment_status: 'SHIPPED',
   estimated_delivery: '22 Oct 2026',
@@ -250,7 +270,7 @@ const DEMO_SEED_ORDER: ServerOrderRecord = {
       status: 'ORDER_PLACED',
       title: 'Order Confirmed & GST Receipt Emailed',
       location: 'Jaipur Flagship Atelier, RJ',
-      note: 'Server webhook verified payment of ₹1,278.40. Official GST Invoice INV/ZRJ/26-27/1001 & confidential Tracking ID TRK-KC-9F4A7C2E1001 sent to priya.sharma@gmail.com.',
+      note: 'Server webhook verified payment of ₹1,278.40. Official GST Invoice INV-KC-2026-1001 & confidential Tracking ID TRK-KC-261019081001 sent to priya.sharma@gmail.com.',
       timestamp: new Date(Date.now() - 3600 * 1000 * 18).toISOString(),
     },
     {
@@ -454,6 +474,18 @@ function getStore(): GlobalStore {
       status: 'DELIVERED',
     };
 
+    const initialAccounts = new Map<string, CustomerAccountRecord>();
+    initialAccounts.set('priya.sharma@gmail.com', {
+      email: 'priya.sharma@gmail.com',
+      name: 'Priya Sharma',
+      phone: '9876543210',
+      pincode: '302001',
+      cityState: 'Jaipur, Rajasthan',
+      address: 'Flat 102, Rose Residency, MI Road',
+      wishlist: [1, 2, 7, 13],
+      updated_at: new Date().toISOString(),
+    });
+
     globalRef.__FASHION_SERVER_STORE__ = {
       storeProfile: { ...DEFAULT_STORE_PROFILE },
       products: DEMO_PRODUCTS.map((p) => ({
@@ -463,14 +495,96 @@ function getStore(): GlobalStore {
       coupons: initialCoupons,
       reviews: initialReviews,
       orders: initialOrders,
+      accounts: initialAccounts,
       emails: [seedEmail],
       idempotencyMap: new Map(),
       paymentIds: new Set(['pay_verified_1001']),
       notificationTarget: process.env.TELEGRAM_CHAT_ID || '+91-9876543210 (Concierge Alert)',
       fallbackTier: 1,
+      nextSerialNumber: 1002,
     };
   }
+  if (!globalRef.__FASHION_SERVER_STORE__.accounts) {
+    globalRef.__FASHION_SERVER_STORE__.accounts = new Map();
+  }
+  if (!globalRef.__FASHION_SERVER_STORE__.nextSerialNumber) {
+    globalRef.__FASHION_SERVER_STORE__.nextSerialNumber = 1002;
+  }
   return globalRef.__FASHION_SERVER_STORE__;
+}
+
+/**
+ * Generates structured Indian E-Commerce & CGST Rule 46(b) compliant reference codes:
+ * - Order Reference (18 chars): ORD-YYMMDD-SS-NNNN (e.g., ORD-261019-08-1002)
+ *   • ORD    = Order Document Prefix (3 chars)
+ *   • YYMMDD = 6-Digit Order Date (Year/Month/Day, e.g., 261019 = 19 Oct 2026)
+ *   • SS     = 2-Digit Seller GST State Code (08 = Rajasthan)
+ *   • NNNN   = 4-Digit Sequential Fiscal Order Serial (1002, 1003, ...)
+ * - GST Tax Invoice (16 chars max per CGST Rule 46(b)): INV-KC-2026-NNNN (e.g., INV-KC-2026-1002)
+ *   • INV    = GST Tax Invoice Prefix (3 chars)
+ *   • KC     = Store Series Code (Kurti Couture / Zariya Jaipur, 2 chars)
+ *   • 2026   = 4-Digit Financial Year (FY 2026-27)
+ *   • NNNN   = 4-Digit Consecutive Fiscal Invoice Serial (matches order serial)
+ * - Shipment Tracking ID (19 chars / 12 pure digits): TRK-KC-YYMMDDSSPPPP (e.g., TRK-KC-261019084829)
+ *   • TRK-KC = Courier AWB Prefix
+ *   • YYMMDD = 6-Digit Dispatch Date
+ *   • SS     = 2-Digit Origin Hub State Code (08 = Jaipur, Rajasthan)
+ *   • PPPP   = 4-Digit Cryptographic Verification PIN (1000-9999)
+ */
+function getDateYYMMDD(d = new Date()): string {
+  const yy = String(d.getFullYear()).slice(-2);
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yy}${mm}${dd}`;
+}
+
+function generateStructuredTrackingId(stateCode = '08'): string {
+  const yymmdd = getDateYYMMDD();
+  const st = (stateCode || '08').replace(/\D/g, '').padStart(2, '0').slice(0, 2);
+  const pin4 = String(crypto.randomInt(1000, 10000));
+  return `TRK-KC-${yymmdd}${st}${pin4}`;
+}
+
+export function explainReferenceCodes(
+  orderId: string,
+  invoiceNumber: string,
+  trackingId?: string | null
+) {
+  return {
+    orderFormat: {
+      code: orderId,
+      standard: 'Indian E-Commerce Structured Order ID (18 chars)',
+      pattern: 'ORD-YYMMDD-SS-NNNN',
+      segments: [
+        { segment: 'ORD', digits: '3 Letters', meaning_en: 'Order Reference Document Prefix', meaning_hi: 'ऑर्डर रेफरेंस प्रीफिक्स' },
+        { segment: 'YYMMDD', digits: '6 Digits', meaning_en: 'Order Date (Year-Month-Day)', meaning_hi: 'ऑर्डर की तारीख (वर्ष-माह-दिन)' },
+        { segment: '08', digits: '2 Digits', meaning_en: 'Seller GST State Code (08 = Rajasthan)', meaning_hi: 'राजस्थान GST राज्य कोड (08)' },
+        { segment: 'NNNN', digits: '4 Digits', meaning_en: 'Consecutive Fiscal Order Serial Number', meaning_hi: 'क्रमिक ऑर्डर सीरियल नंबर' },
+      ],
+    },
+    invoiceFormat: {
+      code: invoiceNumber,
+      standard: 'CGST Rule 46(b) Tax Invoice Number (16 chars max)',
+      pattern: 'INV-KC-YYYY-NNNN',
+      segments: [
+        { segment: 'INV', digits: '3 Letters', meaning_en: 'GST Tax Invoice Prefix', meaning_hi: 'GST टैक्स इनवॉइस प्रीफिक्स' },
+        { segment: 'KC', digits: '2 Letters', meaning_en: 'Store Voucher Series (Kurti Couture)', meaning_hi: 'स्टोर सीरीज़ कोड' },
+        { segment: '2026', digits: '4 Digits', meaning_en: 'Financial Year (FY 2026-27)', meaning_hi: 'वित्तीय वर्ष (FY 2026-27)' },
+        { segment: 'NNNN', digits: '4 Digits', meaning_en: 'Consecutive Tax Invoice Serial Number', meaning_hi: 'क्रमिक इनवॉइस सीरियल नंबर' },
+      ],
+    },
+    trackingFormat: {
+      code: trackingId || 'TRK-KC-261019084829',
+      standard: '12-Digit Courier AWB & Security PIN (TRK-KC + 12 Digits)',
+      pattern: 'TRK-KC-YYMMDDSSPPPP',
+      segments: [
+        { segment: 'TRK-KC', digits: '6 Chars', meaning_en: 'Courier Air Waybill Prefix', meaning_hi: 'कूरियर AWB प्रीफिक्स' },
+        { segment: 'YYMMDD', digits: '6 Digits', meaning_en: 'Dispatch Booking Date (YYMMDD)', meaning_hi: 'डिस्पैच की तारीख (YYMMDD)' },
+        { segment: '08', digits: '2 Digits', meaning_en: 'Origin Hub State Code (08 = Jaipur, RJ)', meaning_hi: 'जयपुर हब राज्य कोड (08)' },
+        { segment: 'PPPP', digits: '4 Digits', meaning_en: 'Secret Verification PIN (Anti-Guessing)', meaning_hi: 'गोपनीय सुरक्षा पिन (4 अंक)' },
+      ],
+    },
+  };
 }
 
 export function getStoreProfile(): StoreProfile {
@@ -923,10 +1037,13 @@ export function createServerOrder(params: {
 
   const expiresInSeconds = 240;
   const expiresAt = new Date(Date.now() + expiresInSeconds * 1000).toISOString();
-  const randomSuffix = crypto.randomBytes(4).toString('hex').toUpperCase();
-  const orderId = `ORD${Date.now().toString().slice(-6)}${randomSuffix}`;
-  const gatewayOrderId = `order_mock_${orderId.toLowerCase()}`;
-  const invoiceNumber = `INV-KC-2026-${orderId.slice(-6)}`;
+  const serialNum = store.nextSerialNumber++;
+  const serialStr = String(serialNum).padStart(4, '0');
+  const yymmdd = getDateYYMMDD();
+  const stateCode = (profile.stateCode || '08').replace(/\D/g, '').padStart(2, '0').slice(0, 2);
+  const orderId = `ORD-${yymmdd}-${stateCode}-${serialStr}`;
+  const gatewayOrderId = `order_mock_${orderId.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+  const invoiceNumber = `INV-KC-2026-${serialStr}`;
 
   const totalPaise = validated.totalPaise;
   const gstPaise = validated.gstPaise || Math.round((totalPaise * 5) / 105);
@@ -993,6 +1110,22 @@ export function createServerOrder(params: {
   store.orders.set(orderId, record);
   if (record.idempotency_key) {
     store.idempotencyMap.set(record.idempotency_key, orderId);
+  }
+
+  // Automatically save/update customer profile under their email address
+  if (email) {
+    const existingAcct = store.accounts.get(email);
+    const pinMatch = address.match(/PIN:\s*(\d{6})/i);
+    store.accounts.set(email, {
+      email,
+      name,
+      phone,
+      pincode: pinMatch ? pinMatch[1] : existingAcct?.pincode || '',
+      cityState: existingAcct?.cityState || 'Jaipur, Rajasthan',
+      address,
+      wishlist: existingAcct?.wishlist || [],
+      updated_at: nowIso,
+    });
   }
 
   return {
@@ -1144,9 +1277,8 @@ export function confirmServerOrder(
     record.stock_deducted = true;
   }
 
-  // Generate 12-hex-char cryptographic Tracking ID (281 trillion combinations — impossible to guess)
-  const trackingToken = crypto.randomBytes(6).toString('hex').toUpperCase();
-  const trackingId = record.tracking_id || `TRK-KC-${trackingToken}`;
+  // Generate structured 12-digit Tracking ID: TRK-KC-YYMMDD + 2-digit StateCode (08) + 4-digit Secret PIN
+  const trackingId = record.tracking_id || generateStructuredTrackingId(store.storeProfile.stateCode);
   const etaDate = new Date(Date.now() + 4 * 24 * 3600 * 1000).toLocaleDateString('en-IN', {
     day: 'numeric',
     month: 'short',
@@ -1215,7 +1347,7 @@ export function updateServerOrderTracking(
   if (update.trackingId && update.trackingId.trim()) {
     record.tracking_id = sanitizeText(update.trackingId, 40).toUpperCase();
   } else if (!record.tracking_id) {
-    record.tracking_id = `TRK-KC-${crypto.randomBytes(6).toString('hex').toUpperCase()}`;
+    record.tracking_id = generateStructuredTrackingId(store.storeProfile.stateCode);
   }
   if (update.estimatedDelivery !== undefined && update.estimatedDelivery.trim()) {
     record.estimated_delivery = sanitizeText(update.estimatedDelivery, 60);
@@ -1246,6 +1378,134 @@ export function listServerOrders(): ServerOrderRecord[] {
   return Array.from(store.orders.values()).sort(
     (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   );
+}
+
+/**
+ * Gmail / Email Account Sync:
+ * Retrieves customer profile (saved address, phone, wishlist) + all orders placed with that email.
+ */
+export function getCustomerAccount(rawEmail: string) {
+  const store = getStore();
+  const email = sanitizeText(rawEmail || '', 120).toLowerCase();
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+    return null;
+  }
+
+  let profile = store.accounts.get(email);
+  const matchingOrders = Array.from(store.orders.values())
+    .filter((o) => (o.customer_email || '').toLowerCase() === email)
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+  // If no explicit profile exists yet, derive from most recent order placed with this email
+  if (!profile && matchingOrders.length > 0) {
+    const latest = matchingOrders[0];
+    const pinMatch = latest.address.match(/PIN:\s*(\d{6})/i);
+    profile = {
+      email,
+      name: latest.customer_name,
+      phone: latest.phone,
+      pincode: pinMatch ? pinMatch[1] : '302001',
+      cityState: 'Jaipur, Rajasthan',
+      address: latest.address,
+      wishlist: [],
+      updated_at: latest.updated_at,
+    };
+    store.accounts.set(email, profile);
+  }
+
+  if (!profile) {
+    profile = {
+      email,
+      name: '',
+      phone: '',
+      pincode: '',
+      cityState: '',
+      address: '',
+      wishlist: [],
+      updated_at: new Date().toISOString(),
+    };
+  }
+
+  const wishlistProducts = store.products.filter((p) => profile!.wishlist.includes(p.id));
+
+  return {
+    profile,
+    wishlistProducts,
+    orders: matchingOrders.map((o) => ({
+      order_id: o.order_id,
+      invoice_number: o.invoice_number,
+      tracking_id: o.tracking_id,
+      status: o.status,
+      fulfillment_status: o.fulfillment_status,
+      amount_paise: o.amount_paise,
+      subtotal_paise: o.subtotal_paise,
+      discount_paise: o.discount_paise,
+      gst_paise: o.gst_paise,
+      courier_name: o.courier_name,
+      estimated_delivery: o.estimated_delivery,
+      created_at: o.created_at,
+      items: o.items,
+      address: o.address,
+      phone: o.phone,
+      customer_name: o.customer_name,
+      customer_email: o.customer_email,
+      reference_explanation: explainReferenceCodes(o.order_id, o.invoice_number, o.tracking_id),
+    })),
+  };
+}
+
+export function upsertCustomerAccount(input: {
+  email: string;
+  name?: string;
+  phone?: string;
+  pincode?: string;
+  cityState?: string;
+  address?: string;
+  wishlist?: number[];
+}) {
+  const store = getStore();
+  const email = sanitizeText(input.email || '', 120).toLowerCase();
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+    return null;
+  }
+
+  const existing = store.accounts.get(email);
+  const nowIso = new Date().toISOString();
+  const wishlist = Array.isArray(input.wishlist)
+    ? Array.from(
+        new Set(
+          input.wishlist
+            .map((id) => Number(id))
+            .filter((id) => Number.isInteger(id) && id > 0)
+        )
+      )
+    : existing?.wishlist || [];
+
+  const updated: CustomerAccountRecord = {
+    email,
+    name: input.name !== undefined && input.name.trim() ? sanitizeText(input.name, 120) : existing?.name || '',
+    phone:
+      input.phone !== undefined && input.phone.trim()
+        ? input.phone.replace(/\D/g, '').slice(-10)
+        : existing?.phone || '',
+    pincode:
+      input.pincode !== undefined && input.pincode.trim()
+        ? input.pincode.replace(/\D/g, '').slice(0, 6)
+        : existing?.pincode || '',
+    cityState:
+      input.cityState !== undefined && input.cityState.trim()
+        ? sanitizeText(input.cityState, 100)
+        : existing?.cityState || '',
+    address:
+      input.address !== undefined && input.address.trim()
+        ? sanitizeText(input.address, 400)
+        : existing?.address || '',
+    wishlist,
+    updated_at: nowIso,
+  };
+
+  store.accounts.set(email, updated);
+  return getCustomerAccount(email);
 }
 
 export function getAdminAnalyticsSummary() {

@@ -9,7 +9,16 @@ import { rupees, useStore, validateCheckoutForm } from '../../lib/store';
 
 export default function CheckoutPage() {
   const router = useRouter();
-  const { cart, lang, appliedCoupon, setAppliedCoupon, hydrate, t } = useStore();
+  const {
+    cart,
+    lang,
+    appliedCoupon,
+    setAppliedCoupon,
+    customerProfile,
+    setCustomerProfile,
+    hydrate,
+    t,
+  } = useStore();
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -34,6 +43,16 @@ export default function CheckoutPage() {
   useEffect(() => {
     hydrate();
   }, [hydrate]);
+
+  // Auto-fill checkout form from synced Gmail / customerProfile
+  useEffect(() => {
+    if (customerProfile.name && !name) setName(customerProfile.name);
+    if (customerProfile.email && !email) setEmail(customerProfile.email);
+    if (customerProfile.phone && !phone) setPhone(customerProfile.phone);
+    if (customerProfile.pincode && !pincode) setPincode(customerProfile.pincode);
+    if (customerProfile.cityState) setCityState(customerProfile.cityState);
+    if (customerProfile.address && !address) setAddress(customerProfile.address);
+  }, [customerProfile]);
 
   useEffect(() => {
     setCouponInput(appliedCoupon || '');
@@ -97,6 +116,17 @@ export default function CheckoutPage() {
 
     setErrors({});
     setLoading(true);
+
+    // Persist customer delivery details & Gmail in store + server account for future sessions
+    setCustomerProfile({
+      name: name.trim(),
+      email: email.trim().toLowerCase(),
+      phone: phone.replace(/\D/g, ''),
+      pincode: pincode.trim(),
+      cityState: cityState.trim(),
+      address: address.trim(),
+      connectedAt: customerProfile.connectedAt || new Date().toISOString(),
+    });
 
     try {
       const idempotencyKey = `idem_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -213,7 +243,7 @@ export default function CheckoutPage() {
 
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-stone-600 mb-1.5">
-                  📧 {t('emailAddress')} *
+                  {t('emailAddress')} (Gmail / Email Sync) *
                 </label>
                 <input
                   type="email"
@@ -324,7 +354,7 @@ export default function CheckoutPage() {
               {/* Quick Promo Code Selector on Checkout */}
               <div className="p-3.5 rounded-2xl bg-stone-50 border border-stone-200">
                 <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-500 mb-1.5">
-                  🎟️ {t('couponCode')}
+                  {t('couponCode')}
                 </label>
                 <div className="flex gap-1.5">
                   <input
@@ -340,7 +370,7 @@ export default function CheckoutPage() {
                       onClick={() => handleApplyCoupon('')}
                       className="px-2.5 py-2 rounded-lg bg-stone-200 text-stone-800 text-xs font-bold"
                     >
-                      ✕
+                      
                     </button>
                   ) : (
                     <button

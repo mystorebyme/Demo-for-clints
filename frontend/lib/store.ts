@@ -15,6 +15,16 @@ export type CartItem = {
   category?: string;
 };
 
+export type CustomerProfile = {
+  email: string;
+  name: string;
+  phone: string;
+  pincode: string;
+  cityState: string;
+  address: string;
+  connectedAt?: string | null;
+};
+
 type Dict = Record<string, string>;
 
 export const DICTIONARIES: Record<Lang, Dict> = {
@@ -26,6 +36,16 @@ const CART_STORAGE_KEY = 'fashion-store-cart-v1';
 const LANG_STORAGE_KEY = 'fashion-store-lang-v1';
 const WISHLIST_STORAGE_KEY = 'fashion-wishlist-v1';
 const COUPON_STORAGE_KEY = 'fashion-coupon-v1';
+const PROFILE_STORAGE_KEY = 'fashion-customer-profile-v1';
+
+const DEFAULT_PROFILE: CustomerProfile = {
+  email: '',
+  name: '',
+  phone: '',
+  pincode: '',
+  cityState: 'Jaipur, Rajasthan',
+  address: '',
+};
 
 function loadInitialCart(): CartItem[] {
   if (typeof window === 'undefined') return [];
@@ -80,6 +100,28 @@ function loadInitialCoupon(): string {
   }
 }
 
+function loadInitialProfile(): CustomerProfile {
+  if (typeof window === 'undefined') return DEFAULT_PROFILE;
+  try {
+    const raw = window.localStorage.getItem(PROFILE_STORAGE_KEY);
+    if (!raw) return DEFAULT_PROFILE;
+    const parsed = JSON.parse(raw);
+    return {
+      email: typeof parsed?.email === 'string' ? parsed.email : '',
+      name: typeof parsed?.name === 'string' ? parsed.name : '',
+      phone: typeof parsed?.phone === 'string' ? parsed.phone : '',
+      pincode: typeof parsed?.pincode === 'string' ? parsed.pincode : '',
+      cityState:
+        typeof parsed?.cityState === 'string' && parsed.cityState
+          ? parsed.cityState
+          : 'Jaipur, Rajasthan',
+      address: typeof parsed?.address === 'string' ? parsed.address : '',
+    };
+  } catch {
+    return DEFAULT_PROFILE;
+  }
+}
+
 function saveCart(cart: CartItem[]) {
   if (typeof window === 'undefined') return;
   try {
@@ -98,12 +140,22 @@ function saveWishlist(wishlist: number[]) {
   }
 }
 
+function saveProfile(profile: CustomerProfile) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile));
+  } catch {
+    // ignore
+  }
+}
+
 type State = {
   lang: Lang;
   hydrated: boolean;
   cart: CartItem[];
   wishlist: number[];
   appliedCoupon: string;
+  customerProfile: CustomerProfile;
   hydrate: () => void;
   setLang: (l: Lang) => void;
   toggleLang: () => void;
@@ -112,7 +164,12 @@ type State = {
   removeFromCart: (id: number, size?: string) => void;
   clearCart: () => void;
   toggleWishlist: (id: number) => boolean;
+  setWishlist: (ids: number[]) => void;
   setAppliedCoupon: (code: string) => void;
+  setCustomerProfile: (partial: Partial<CustomerProfile>) => void;
+  disconnectCustomerProfile: () => void;
+  totalCount: () => number;
+  totalPaise: () => number;
   t: (key: string, vars?: Record<string, string | number>) => string;
 };
 
@@ -122,6 +179,7 @@ export const useStore = create<State>((set, get) => ({
   cart: [],
   wishlist: [],
   appliedCoupon: '',
+  customerProfile: DEFAULT_PROFILE,
 
   hydrate: () => {
     if (get().hydrated) return;
@@ -130,6 +188,7 @@ export const useStore = create<State>((set, get) => ({
       cart: loadInitialCart(),
       wishlist: loadInitialWishlist(),
       appliedCoupon: loadInitialCoupon(),
+      customerProfile: loadInitialProfile(),
       hydrated: true,
     });
   },
@@ -162,7 +221,10 @@ export const useStore = create<State>((set, get) => ({
               ? { ...x, qty: Math.min(10, x.qty + item.qty) }
               : x
           )
-        : [...state.cart, { ...item, size: normalizedSize, qty: Math.min(10, Math.max(1, item.qty)) }];
+        : [
+            ...state.cart,
+            { ...item, size: normalizedSize, qty: Math.min(10, Math.max(1, item.qty)) },
+          ];
       saveCart(nextCart);
       return { cart: nextCart };
     }),
@@ -172,7 +234,9 @@ export const useStore = create<State>((set, get) => ({
       const normalizedSize = size || 'Free Size';
       const nextCart =
         qty <= 0
-          ? state.cart.filter((x) => !(x.id === id && (x.size || 'Free Size') === normalizedSize))
+          ? state.cart.filter(
+              (x) => !(x.id === id && (x.size || 'Free Size') === normalizedSize)
+            )
           : state.cart.map((x) =>
               x.id === id && (x.size || 'Free Size') === normalizedSize
                 ? { ...x, qty: Math.min(10, qty) }
@@ -202,7 +266,21 @@ export const useStore = create<State>((set, get) => ({
     const next = exists ? current.filter((x) => x !== id) : [...current, id];
     saveWishlist(next);
     set({ wishlist: next });
+    const email = get().customerProfile.email;
+    if (email && typeof window !== 'undefined') {
+      fetch('/api/account', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, wishlist: next }),
+      }).catch(() => {});
+    }
     return !exists;
+  },
+
+  setWishlist: (ids) => {
+    const clean = Array.from(new Set(ids.filter((n) => typeof n === 'number')));
+    saveWishlist(clean);
+    set({ wishlist: clean });
   },
 
   setAppliedCoupon: (code) => {
@@ -216,6 +294,39 @@ export const useStore = create<State>((set, get) => ({
     }
     set({ appliedCoupon: clean });
   },
+
+  setCustomerProfile: (partial) => {
+    const updated: CustomerProfile = {
+      ...get().customerProfile,
+      ...partial,
+    };
+    saveProfile(updated);
+    set({ customerProfile: updated });
+    if (updated.email && typeof window !== 'undefined') {
+      fetch('/api/account', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: updated.email,
+          name: updated.name,
+          phone: updated.phone,
+          pincode: updated.pincode,
+          cityState: updated.cityState,
+          address: updated.address,
+          wishlist: get().wishlist,
+        }),
+      }).catch(() => {});
+    }
+  },
+
+  disconnectCustomerProfile: () => {
+    saveProfile(DEFAULT_PROFILE);
+    set({ customerProfile: DEFAULT_PROFILE });
+  },
+
+  totalCount: () => get().cart.reduce((sum, item) => sum + item.qty, 0),
+
+  totalPaise: () => get().cart.reduce((sum, item) => sum + item.price_paise * item.qty, 0),
 
   t: (key, vars) => {
     const lang = get().lang;
@@ -237,6 +348,8 @@ export const rupees = (paise: number): string => {
     maximumFractionDigits: 2,
   })}`;
 };
+
+export const formatINR = rupees;
 
 export function rupeesInWords(paise: number): string {
   const amount = Math.round((Number(paise) || 0) / 100);
@@ -339,9 +452,9 @@ export function buildWhatsAppShareUrl(product: {
   price_paise: number;
 }): string {
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
-  const text = `✨ Explore *${product.name}* (${product.name_hi || ''}) — *${rupees(
+  const text = `Explore *${product.name}* (${product.name_hi || ''}) — *${rupees(
     product.price_paise
-  )}* at Zariya Jaipur Royal Ethnic House!\n🛍️ View piece: ${origin}/products/${product.id}`;
+  )}* at Zariya Jaipur Royal Ethnic House.\nView piece: ${origin}/products/${product.id}`;
   return `https://wa.me/?text=${encodeURIComponent(text)}`;
 }
 
@@ -351,7 +464,7 @@ export function buildWhatsAppOrderUrl(product: {
   price_paise: number;
   size?: string;
 }): string {
-  const text = `नमस्ते / Hello Zariya Jaipur Boutique! 🙏\nI would like to order / inquire about:\n• *Piece*: ${
+  const text = `Hello Zariya Jaipur Boutique,\nI would like to inquire about:\n• *Piece*: ${
     product.name
   } (#${product.id})\n• *Price*: ${rupees(product.price_paise)}\n• *Size*: ${
     product.size || 'Free Size'

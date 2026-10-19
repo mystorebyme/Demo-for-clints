@@ -97,11 +97,11 @@ type EmailReceiptRecord = {
 };
 
 const TRACKING_STAGE_BUTTONS: { status: FulfillmentStatus; label: string }[] = [
-  { status: 'ORDER_PLACED', label: '✓ Confirmed' },
-  { status: 'PACKED', label: '📦 Packed' },
-  { status: 'SHIPPED', label: '🚚 Shipped' },
-  { status: 'OUT_FOR_DELIVERY', label: '🛵 Out for Delivery' },
-  { status: 'DELIVERED', label: '🎉 Delivered' },
+  { status: 'ORDER_PLACED', label: ' Confirmed' },
+  { status: 'PACKED', label: ' Packed' },
+  { status: 'SHIPPED', label: ' Shipped' },
+  { status: 'OUT_FOR_DELIVERY', label: ' Out for Delivery' },
+  { status: 'DELIVERED', label: ' Delivered' },
 ];
 
 const PRESET_PRODUCT_SVG_OPTIONS = [
@@ -412,7 +412,7 @@ export default function AdminPage() {
 
           {actionMsg && (
             <div className="mt-4 p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs sm:text-sm font-bold flex items-center justify-between">
-              <span>✓ {actionMsg}</span>
+              <span> {actionMsg}</span>
               <button
                 type="button"
                 onClick={() => setActionMsg('')}
@@ -497,7 +497,7 @@ export default function AdminPage() {
                 <div className="lg:col-span-2 p-5 rounded-2xl bg-stone-50 border border-stone-200">
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-xs font-extrabold uppercase tracking-wider text-stone-500">
-                      📊 7-Day Revenue Trend (INR)
+                       7-Day Revenue Trend (INR)
                     </h3>
                     <span className="text-xs font-bold text-emerald-700">
                       Live UPI Settlement Analytics
@@ -535,7 +535,7 @@ export default function AdminPage() {
 
                 <div className="p-5 rounded-2xl bg-stone-50 border border-stone-200 space-y-3">
                   <h3 className="text-xs font-extrabold uppercase tracking-wider text-stone-500">
-                    🛍️ Category Sales Mix
+                     Category Sales Mix
                   </h3>
                   {analytics.categoryBreakdown.map((c) => (
                     <div
@@ -569,7 +569,7 @@ export default function AdminPage() {
                   : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
               }`}
             >
-              📦 Orders & Live Tracking ({orders.length})
+               Orders & Live Tracking ({orders.length})
             </button>
             <button
               type="button"
@@ -580,7 +580,7 @@ export default function AdminPage() {
                   : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
               }`}
             >
-              👗 Stock & Product Photo Manager ({products.length})
+               Stock & Product Photo Manager ({products.length})
             </button>
             <button
               type="button"
@@ -591,7 +591,7 @@ export default function AdminPage() {
                   : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
               }`}
             >
-              🏛️ Customize Store GST & Invoice Profile
+               Customize Store GST & Invoice Profile
             </button>
             <button
               type="button"
@@ -602,7 +602,7 @@ export default function AdminPage() {
                   : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
               }`}
             >
-              ✉️ Sent Email Receipts ({sentEmails.length})
+               Sent Email Receipts ({sentEmails.length})
             </button>
             <button
               type="button"
@@ -613,7 +613,7 @@ export default function AdminPage() {
                   : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
               }`}
             >
-              🎟️ Promo Coupons ({coupons.length})
+               Promo Coupons ({coupons.length})
             </button>
           </div>
         </div>
@@ -652,7 +652,7 @@ export default function AdminPage() {
                             href={`/order/${o.order_id}/invoice`}
                             className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-100 hover:bg-amber-200 text-amber-950 text-[10px] font-sans font-bold"
                           >
-                            📄 GST Invoice
+                             GST Invoice
                           </Link>
                         </div>
                       </td>
@@ -690,7 +690,7 @@ export default function AdminPage() {
                         </span>
                         {o.email_sent && (
                           <div className="text-[11px] text-emerald-800 font-semibold">
-                            ✉️ Receipt Emailed
+                             Receipt Emailed
                           </div>
                         )}
                         {!isPaid && (
@@ -756,7 +756,7 @@ export default function AdminPage() {
           <div className="space-y-8">
             <div className="bg-white rounded-3xl border border-stone-200 p-6 sm:p-8 shadow-sm">
               <h2 className="text-lg font-extrabold text-stone-900 mb-1">
-                ➕ Add New Product & Stock Image to Live Storefront
+                 Add New Product & Stock Image to Live Storefront
               </h2>
               <p className="text-xs text-stone-500 mb-5">
                 Add a new item with a custom image URL or select from the luxury studio artwork gallery. Stock automatically decreases as customers purchase.
@@ -905,7 +905,7 @@ export default function AdminPage() {
             {/* Live Catalog Stock & Image Table */}
             <div className="bg-white rounded-3xl border border-stone-200 p-6 sm:p-8 shadow-sm overflow-x-auto">
               <h2 className="text-lg font-extrabold text-stone-900 mb-4">
-                👗 Live Inventory, Stock Count & Image Manager ({products.length} Products)
+                 Live Inventory, Stock Count & Image Manager ({products.length} Products)
               </h2>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -1011,7 +1011,7 @@ export default function AdminPage() {
                 Multi-Store White-Label GST Billing Configuration
               </span>
               <h2 className="text-xl font-extrabold text-stone-900 mt-0.5">
-                🏛️ Customize Store GST Tax Invoice & Brand Identity
+                 Customize Store GST Tax Invoice & Brand Identity
               </h2>
               <p className="text-xs text-stone-500 mt-1">
                 Every GST Tax Invoice (`/order/[id]/invoice`) and automated customer Email Receipt is dynamically generated using the store profile below. Customize it for any client store.
@@ -1248,13 +1248,13 @@ export default function AdminPage() {
                   href="/order/ORDDEMO1001/invoice"
                   className="text-xs font-extrabold text-rose-900 hover:underline"
                 >
-                  📄 Preview Live GST Invoice with Current Settings →
+                   Preview Live GST Invoice with Current Settings →
                 </Link>
                 <button
                   type="submit"
                   className="px-6 py-3 rounded-xl bg-rose-900 hover:bg-rose-950 text-white text-xs sm:text-sm font-extrabold shadow-sm transition"
                 >
-                  💾 Save Store GST & Invoice Profile
+                   Save Store GST & Invoice Profile
                 </button>
               </div>
             </form>
@@ -1266,7 +1266,7 @@ export default function AdminPage() {
           <div className="bg-white rounded-3xl border border-stone-200 p-6 sm:p-8 shadow-sm space-y-4">
             <div>
               <h2 className="text-lg font-extrabold text-stone-900">
-                ✉️ Automated Customer Email Receipts Outbox ({sentEmails.length})
+                 Automated Customer Email Receipts Outbox ({sentEmails.length})
               </h2>
               <p className="text-xs text-stone-500 mt-0.5">
                 Every time an order is confirmed, the server automatically generates and dispatches an HTML Email Receipt containing the itemized GST Tax Invoice and the customer&apos;s confidential Tracking ID.
@@ -1320,7 +1320,7 @@ export default function AdminPage() {
                           onClick={() => setPreviewEmail(em)}
                           className="px-3 py-1.5 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold text-xs"
                         >
-                          👁️ View HTML Email
+                           View HTML Email
                         </button>
                       </td>
                     </tr>
@@ -1336,7 +1336,7 @@ export default function AdminPage() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="bg-white rounded-3xl border border-stone-200 p-6 shadow-sm h-fit">
               <h2 className="text-base font-extrabold text-stone-900 mb-1">
-                🎟️ Create / Update Promo Coupon
+                 Create / Update Promo Coupon
               </h2>
               <p className="text-xs text-stone-500 mb-4">
                 Create percentage or flat rupee discount codes for festive sales.
@@ -1496,7 +1496,7 @@ export default function AdminPage() {
                 onClick={() => setPreviewEmail(null)}
                 className="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-bold"
               >
-                ✕ Close
+                 Close
               </button>
             </div>
             <div className="p-4 overflow-y-auto flex-1 bg-stone-50">

@@ -75,6 +75,13 @@ function DynamicQrSvg({ value }: { value: string }) {
   );
 }
 
+type ReferenceSegment = {
+  segment: string;
+  digits: string;
+  meaning_en: string;
+  meaning_hi: string;
+};
+
 type OrderDetail = {
   orderId: string;
   invoiceNumber?: string;
@@ -110,6 +117,11 @@ type OrderDetail = {
   customerEmail?: string;
   phone?: string;
   address?: string;
+  referenceExplanation?: {
+    orderFormat: { code: string; standard: string; pattern: string; segments: ReferenceSegment[] };
+    invoiceFormat: { code: string; standard: string; pattern: string; segments: ReferenceSegment[] };
+    trackingFormat: { code: string; standard: string; pattern: string; segments: ReferenceSegment[] };
+  };
   emailReceipt?: {
     id: string;
     to_email: string;
@@ -130,16 +142,16 @@ type OrderDetail = {
 };
 
 const TRACKING_STEPS = [
-  { key: 'ORDER_PLACED', label: 'Confirmed', icon: '✓' },
-  { key: 'PACKED', label: 'Packed', icon: '📦' },
-  { key: 'SHIPPED', label: 'Shipped', icon: '🚚' },
-  { key: 'OUT_FOR_DELIVERY', label: 'Out for Delivery', icon: '🛵' },
-  { key: 'DELIVERED', label: 'Delivered', icon: '🎉' },
+  { key: 'ORDER_PLACED', label: 'Confirmed', stepNum: '01' },
+  { key: 'PACKED', label: 'Packed', stepNum: '02' },
+  { key: 'SHIPPED', label: 'Shipped', stepNum: '03' },
+  { key: 'OUT_FOR_DELIVERY', label: 'Out for Delivery', stepNum: '04' },
+  { key: 'DELIVERED', label: 'Delivered', stepNum: '05' },
 ];
 
 export default function OrderPage({ params }: { params: { orderId: string } }) {
   const { orderId } = params;
-  const { clearCart, t } = useStore();
+  const { clearCart, lang, t } = useStore();
 
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [secondsLeft, setSecondsLeft] = useState<number>(240);
@@ -242,18 +254,18 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
       <Header />
 
       <main className="flex-1 max-w-3xl mx-auto w-full px-3 sm:px-6 py-6 sm:py-12">
-        <div className="bg-white rounded-3xl border border-stone-200 p-5 sm:p-8 shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-200 pb-4 mb-6">
+        <div className="bg-white rounded-3xl border border-stone-200 p-5 sm:p-8 shadow-sm space-y-6">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-200 pb-4">
             <div>
               <span className="text-[11px] uppercase tracking-wider font-bold text-stone-400">
-                Order Reference
+                Order Reference (ORD-YYMMDD-SS-NNNN)
               </span>
               <h1 className="text-lg sm:text-2xl font-extrabold text-stone-900 font-mono">
                 {orderId}
               </h1>
               {order?.invoiceNumber && (
                 <p className="text-xs text-stone-500 font-mono mt-0.5">
-                  GST Invoice: <strong>{order.invoiceNumber}</strong>
+                  GST Tax Invoice (CGST Rule 46b): <strong>{order.invoiceNumber}</strong>
                 </p>
               )}
             </div>
@@ -263,7 +275,7 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
                 href={`/order/${orderId}/invoice`}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-100 hover:bg-amber-200 text-amber-950 border border-amber-300 text-xs font-extrabold transition"
               >
-                📄 {t('downloadInvoice')}
+                {t('downloadInvoice')}
               </Link>
               <span
                 className={`px-3 py-1.5 rounded-full text-xs font-extrabold uppercase tracking-wider ${
@@ -284,8 +296,8 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
           ) : isConfirmed ? (
             <div className="py-2 sm:py-4 space-y-6">
               <div className="text-center space-y-2.5">
-                <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto text-2xl sm:text-3xl font-bold">
-                  ✓
+                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center mx-auto text-sm font-extrabold uppercase tracking-wider">
+                  PAID
                 </div>
                 <h2 className="text-xl sm:text-2xl font-extrabold text-emerald-900">
                   {t('paymentVerifiedTitle')}
@@ -294,7 +306,7 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
                   {t('paymentVerifiedDesc')}
                 </p>
                 <div className="inline-block bg-stone-100 rounded-xl px-4 py-2 text-xs font-mono text-stone-700">
-                  Amount Paid: <strong>{rupees(order.amountPaise)}</strong> • Ref:{' '}
+                  Amount Paid: <strong>{rupees(order.amountPaise)}</strong> | Ref:{' '}
                   <strong>{order.paymentId || 'VERIFIED'}</strong>
                 </div>
               </div>
@@ -304,7 +316,7 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
                     <span className="px-2.5 py-0.5 rounded-full bg-emerald-700 text-white text-[11px] font-extrabold uppercase tracking-wider">
-                      ✉️ {t('emailReceiptSentBadge')}
+                      {t('emailReceiptSentBadge')}
                     </span>
                   </div>
                   <p className="text-xs text-emerald-950 font-medium">
@@ -324,7 +336,7 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
                       onClick={() => setShowEmailModal(true)}
                       className="px-3.5 py-2 rounded-xl bg-white hover:bg-emerald-100 text-emerald-900 border border-emerald-300 text-xs font-extrabold shadow-sm transition"
                     >
-                      👁️ {t('viewEmailReceipt')}
+                      {t('viewEmailReceipt')}
                     </button>
                   )}
                   <button
@@ -333,7 +345,7 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
                     onClick={handleResendEmail}
                     className="px-3.5 py-2 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-bold transition disabled:opacity-50"
                   >
-                    {resendingEmail ? 'Sending...' : `↻ ${t('resendEmailReceipt')}`}
+                    {resendingEmail ? 'Sending...' : t('resendEmailReceipt')}
                   </button>
                 </div>
               </div>
@@ -344,7 +356,7 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/15 pb-4">
                     <div>
                       <span className="text-[11px] uppercase tracking-widest text-amber-300 font-bold block">
-                        📦 {t('trackingIdLabel')}
+                        {t('trackingIdLabel')} (12-Digit AWB)
                       </span>
                       <div className="flex items-center gap-2.5 mt-1">
                         <span
@@ -358,11 +370,11 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
                           onClick={copyTrackingId}
                           className="px-2.5 py-1 rounded-lg bg-white/15 hover:bg-white/25 text-xs font-semibold transition"
                         >
-                          {copiedTracking ? `✓ ${t('trackingCopied')}` : t('copyTrackingId')}
+                          {copiedTracking ? t('trackingCopied') : t('copyTrackingId')}
                         </button>
                       </div>
                       <p className="text-[11px] text-rose-200/90 mt-1">
-                        Use this private Tracking ID anytime to check your live delivery status.
+                        Use this private 12-digit Tracking ID anytime to check your live delivery status.
                       </p>
                     </div>
 
@@ -381,20 +393,20 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
                     </div>
                   </div>
 
-                  {/* Stepper */}
+                  {/* Stepper (Zero Emojis) */}
                   <div className="grid grid-cols-5 gap-1 pt-1">
                     {TRACKING_STEPS.map((step, index) => {
                       const done = index <= currentStepIndex;
                       return (
                         <div key={step.key} className="text-center">
                           <div
-                            className={`w-7 h-7 sm:w-8 sm:h-8 mx-auto rounded-full flex items-center justify-center text-xs font-bold border ${
+                            className={`w-7 h-7 sm:w-8 sm:h-8 mx-auto rounded-full flex items-center justify-center text-[10px] font-mono font-bold border ${
                               done
                                 ? 'bg-amber-400 text-stone-950 border-amber-300 shadow'
                                 : 'bg-white/10 text-white/50 border-white/20'
                             }`}
                           >
-                            {step.icon}
+                            {step.stepNum}
                           </div>
                           <p
                             className={`text-[9px] sm:text-xs mt-1 font-semibold ${
@@ -421,13 +433,13 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
                         href={`/order/${order.orderId}/invoice`}
                         className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/15 hover:bg-white/25 text-white font-bold text-xs transition"
                       >
-                        📄 GST Invoice PDF
+                        GST Invoice PDF
                       </Link>
                       <Link
                         href={`/track?id=${encodeURIComponent(order.trackingId)}`}
                         className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-stone-950 font-extrabold text-xs shadow transition"
                       >
-                        {t('trackYourOrderBtn')} →
+                        {t('trackYourOrderBtn')}
                       </Link>
                     </div>
                   </div>
@@ -439,13 +451,13 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
                   href={`/track?id=${encodeURIComponent(order.trackingId || order.orderId)}`}
                   className="px-5 py-3 rounded-xl bg-rose-900 hover:bg-rose-950 text-white font-semibold text-xs sm:text-sm"
                 >
-                  📦 Track Shipment
+                  Track Shipment
                 </Link>
                 <Link
                   href={`/order/${order.orderId}/invoice`}
                   className="px-5 py-3 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-950 border border-amber-300 font-bold text-xs sm:text-sm"
                 >
-                  🖨️ Download GST Invoice
+                  Download GST Invoice
                 </Link>
                 <Link
                   href="/"
@@ -472,7 +484,7 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
               {/* Dedicated 4-Minute (240-Second) QR Session Timer + Dynamic QR */}
               <div className="flex flex-col items-center justify-center p-5 sm:p-6 rounded-2xl bg-stone-50 border border-stone-200 space-y-3">
                 <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-rose-950 text-amber-300 text-xs font-mono font-extrabold shadow-sm">
-                  <span>⏱️ Session Active:</span>
+                  <span>Session Active:</span>
                   <span>
                     {mins}:{secs}
                   </span>
@@ -499,11 +511,110 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
                   onClick={verifyInstantUpi}
                   className="w-full sm:w-auto shrink-0 px-4 py-2.5 rounded-xl bg-rose-900 hover:bg-rose-950 text-white text-xs font-bold transition-colors"
                 >
-                  ✓ Verify Payment & Get Tracking ID
+                  Verify Payment & Get Tracking ID
                 </button>
               </div>
               {message && <p className="text-xs font-semibold text-rose-800 text-center">{message}</p>}
             </div>
+          )}
+
+          {/* Structured Reference & GST Invoice Numbering Breakdown (Explaining Every Digit & Segment) */}
+          {order && (
+            <section className="rounded-2xl bg-stone-50 border border-stone-200 p-4 sm:p-5 space-y-4">
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-rose-900 block">
+                  INDIAN E-COMMERCE & CGST RULE 46(b) STANDARD
+                </span>
+                <h3 className="text-sm sm:text-base font-serif font-bold text-stone-900 mt-0.5">
+                  {t('refCodeBreakdownTitle')}
+                </h3>
+                <p className="text-xs text-stone-500 mt-0.5">
+                  {lang === 'hi'
+                    ? 'कोई रैंडम अक्षर नहीं — हर अंक की अपनी आधिकारिक पहचान और अर्थ है:'
+                    : 'Zero random hex strings — every segment and digit count follows structured fiscal & courier standards:'}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                {/* 1. Order Reference Breakdown */}
+                <div className="rounded-xl bg-white border border-stone-200 p-3.5 space-y-2">
+                  <div className="border-b border-stone-100 pb-2">
+                    <span className="text-[10px] uppercase tracking-wider text-stone-400 font-bold block">
+                      1. Order Reference (18 Chars)
+                    </span>
+                    <span className="font-mono font-extrabold text-stone-900 text-xs">
+                      {order.orderId}
+                    </span>
+                  </div>
+                  <ul className="space-y-1.5 text-[11px] text-stone-600">
+                    <li>
+                      <strong className="font-mono text-stone-900">ORD</strong> (3 Letters): Order Document Prefix
+                    </li>
+                    <li>
+                      <strong className="font-mono text-stone-900">YYMMDD</strong> (6 Digits): Order Date (Year/Month/Day)
+                    </li>
+                    <li>
+                      <strong className="font-mono text-stone-900">08</strong> (2 Digits): Rajasthan GST State Code
+                    </li>
+                    <li>
+                      <strong className="font-mono text-stone-900">NNNN</strong> (4 Digits): Consecutive Fiscal Order Serial
+                    </li>
+                  </ul>
+                </div>
+
+                {/* 2. GST Tax Invoice Breakdown */}
+                <div className="rounded-xl bg-white border border-stone-200 p-3.5 space-y-2">
+                  <div className="border-b border-stone-100 pb-2">
+                    <span className="text-[10px] uppercase tracking-wider text-stone-400 font-bold block">
+                      2. GST Tax Invoice (16 Chars Max)
+                    </span>
+                    <span className="font-mono font-extrabold text-stone-900 text-xs">
+                      {order.invoiceNumber || 'INV-KC-2026-1001'}
+                    </span>
+                  </div>
+                  <ul className="space-y-1.5 text-[11px] text-stone-600">
+                    <li>
+                      <strong className="font-mono text-stone-900">INV</strong> (3 Letters): GST Tax Invoice Prefix
+                    </li>
+                    <li>
+                      <strong className="font-mono text-stone-900">KC</strong> (2 Letters): Store Series (Kurti Couture)
+                    </li>
+                    <li>
+                      <strong className="font-mono text-stone-900">2026</strong> (4 Digits): Financial Year (FY 2026-27)
+                    </li>
+                    <li>
+                      <strong className="font-mono text-stone-900">NNNN</strong> (4 Digits): Consecutive Invoice Serial (CGST Rule 46b)
+                    </li>
+                  </ul>
+                </div>
+
+                {/* 3. Shipment Tracking ID Breakdown */}
+                <div className="rounded-xl bg-white border border-stone-200 p-3.5 space-y-2">
+                  <div className="border-b border-stone-100 pb-2">
+                    <span className="text-[10px] uppercase tracking-wider text-stone-400 font-bold block">
+                      3. Courier Tracking AWB (12 Digits)
+                    </span>
+                    <span className="font-mono font-extrabold text-amber-900 text-xs">
+                      {order.trackingId || 'TRK-KC-261019081001'}
+                    </span>
+                  </div>
+                  <ul className="space-y-1.5 text-[11px] text-stone-600">
+                    <li>
+                      <strong className="font-mono text-stone-900">TRK-KC</strong> (6 Chars): Courier Air Waybill Prefix
+                    </li>
+                    <li>
+                      <strong className="font-mono text-stone-900">YYMMDD</strong> (6 Digits): Dispatch Booking Date
+                    </li>
+                    <li>
+                      <strong className="font-mono text-stone-900">08</strong> (2 Digits): Origin Hub State Code (Jaipur, RJ)
+                    </li>
+                    <li>
+                      <strong className="font-mono text-stone-900">PPPP</strong> (4 Digits): Confidential Verification PIN
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </section>
           )}
         </div>
       </main>
@@ -532,7 +643,7 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
                 onClick={() => setShowEmailModal(false)}
                 className="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-bold"
               >
-                ✕ Close
+                Close
               </button>
             </div>
             <div className="px-5 py-2.5 bg-stone-100 border-b border-stone-200 text-xs text-stone-600 flex flex-wrap justify-between gap-2">

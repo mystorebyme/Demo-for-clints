@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
   dispatchOrderConfirmationEmail,
+  explainReferenceCodes,
   getOrderEmailReceipt,
   getServerOrder,
   getStoreProfile,
@@ -67,6 +68,11 @@ export async function GET(
     emailSentAt: order.email_sent_at,
     emailReceipt,
     storeProfile,
+    referenceExplanation: explainReferenceCodes(
+      order.order_id,
+      order.invoice_number,
+      order.tracking_id
+    ),
     qrExpiresAt: order.qr_expires_at,
     qrPayload: order.qr_payload,
     createdAt: order.created_at,

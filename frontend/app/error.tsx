@@ -13,7 +13,7 @@ export default function ErrorBoundary({
     <div className="min-h-screen flex flex-col items-center justify-center bg-[#faf7f2] px-4 text-center">
       <div className="max-w-md w-full bg-white rounded-3xl border border-stone-200 p-8 shadow-sm space-y-4">
         <div className="w-14 h-14 mx-auto rounded-full bg-amber-100 text-rose-900 flex items-center justify-center text-2xl font-serif font-bold">
-          ✦
+          
         </div>
         <h1 className="text-xl sm:text-2xl font-serif font-extrabold text-stone-900">
           Refreshing Your Boutique View

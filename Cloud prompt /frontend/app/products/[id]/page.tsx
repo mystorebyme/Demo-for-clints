@@ -50,8 +50,8 @@ export default function ProductDetailPage() {
   const [pinInput, setPinInput] = useState('302001');
   const [pinResult, setPinResult] = useState<string | null>(
     lang === 'hi'
-      ? '✓ जयपुर/राजस्थान में 2-3 दिनों में मुफ़्त बीमाकृत डिलीवरी (Delhivery Express)'
-      : '✓ Free Express Delivery by 22 Oct 2026 via Delhivery Express'
+      ? ' जयपुर/राजस्थान में 2-3 दिनों में मुफ़्त बीमाकृत डिलीवरी (Delhivery Express)'
+      : ' Free Express Delivery by 22 Oct 2026 via Delhivery Express'
   );
 
   // Review form
@@ -151,8 +151,8 @@ export default function ProductDetailPage() {
     if (!validatePincode(pinInput)) {
       setPinResult(
         lang === 'hi'
-          ? '⚠️ कृपया वैध 6-अंकों का भारतीय पिनकोड दर्ज करें।'
-          : '⚠️ Please enter a valid 6-digit Indian PIN code.'
+          ? ' कृपया वैध 6-अंकों का भारतीय पिनकोड दर्ज करें।'
+          : ' Please enter a valid 6-digit Indian PIN code.'
       );
       return;
     }
@@ -165,8 +165,8 @@ export default function ProductDetailPage() {
     });
     setPinResult(
       lang === 'hi'
-        ? `✓ पिनकोड ${pinInput} पर ${eta} तक मुफ़्त डिलीवरी उपलब्ध है (Delhivery / BlueDart)`
-        : `✓ Free Insured Delivery to PIN ${pinInput} by ${eta} via Delhivery Express`
+        ? ` पिनकोड ${pinInput} पर ${eta} तक मुफ़्त डिलीवरी उपलब्ध है (Delhivery / BlueDart)`
+        : ` Free Insured Delivery to PIN ${pinInput} by ${eta} via Delhivery Express`
     );
   };
 
@@ -229,14 +229,26 @@ export default function ProductDetailPage() {
               <button
                 type="button"
                 onClick={() => toggleWishlist(product.id)}
-                className={`absolute top-4 right-4 w-11 h-11 rounded-full flex items-center justify-center text-lg shadow-md transition ${
+                className={`absolute top-4 right-4 w-11 h-11 rounded-full flex items-center justify-center shadow-md transition ${
                   isWishlisted
                     ? 'bg-rose-600 text-white'
                     : 'bg-white/95 text-stone-700 hover:text-rose-600'
                 }`}
                 title={isWishlisted ? 'Saved in Wishlist' : 'Save to Wishlist'}
               >
-                {isWishlisted ? '♥' : '♡'}
+                <svg
+                  className="w-5 h-5"
+                  fill={isWishlisted ? 'currentColor' : 'none'}
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z"
+                  />
+                </svg>
               </button>
             </div>
 
@@ -276,7 +288,7 @@ export default function ProductDetailPage() {
                       : t('categoryAccessory')}
                 </span>
                 <span className="text-sm font-semibold text-amber-700">
-                  ★ {product.rating.toFixed(1)} ({reviews.length || product.reviews_count} reviews)
+                   {product.rating.toFixed(1)} ({reviews.length || product.reviews_count} reviews)
                 </span>
               </div>
 
@@ -301,7 +313,7 @@ export default function ProductDetailPage() {
               {/* Coupon Teaser Box */}
               <div className="mb-5 p-3 rounded-xl bg-amber-50/90 border border-amber-200 text-xs text-amber-950 flex flex-wrap items-center justify-between gap-2">
                 <span>
-                  🎟️ <strong>Festive Offer:</strong> Use code <code className="font-mono font-bold bg-white px-1.5 py-0.5 rounded border border-amber-300">DIWALI20</code> for 20% OFF or <code className="font-mono font-bold bg-white px-1.5 py-0.5 rounded border border-amber-300">FIRST10</code> for 10% OFF!
+                   <strong>Festive Offer:</strong> Use code <code className="font-mono font-bold bg-white px-1.5 py-0.5 rounded border border-amber-300">DIWALI20</code> for 20% OFF or <code className="font-mono font-bold bg-white px-1.5 py-0.5 rounded border border-amber-300">FIRST10</code> for 10% OFF!
                 </span>
               </div>
 
@@ -321,7 +333,7 @@ export default function ProductDetailPage() {
                       onClick={() => setShowSizeModal(true)}
                       className="text-xs font-bold text-rose-800 hover:underline flex items-center gap-1"
                     >
-                      📏 {t('sizeGuide')} (S–XXL)
+                       {t('sizeGuide')} (S–XXL)
                     </button>
                   )}
                 </div>
@@ -382,7 +394,7 @@ export default function ProductDetailPage() {
               {/* Pincode Delivery Date Checker */}
               <div className="mb-6 p-3.5 rounded-2xl bg-stone-50 border border-stone-200">
                 <label className="block text-xs font-bold uppercase tracking-wider text-stone-600 mb-2">
-                  📍 {t('pincodeCheck')}
+                   {t('pincodeCheck')}
                 </label>
                 <form onSubmit={handleCheckPincode} className="flex gap-2">
                   <input
@@ -421,7 +433,7 @@ export default function ProductDetailPage() {
                         : 'bg-white text-rose-800 border-rose-800 hover:bg-rose-50'
                   }`}
                 >
-                  {addedFeedback ? `✓ ${t('addedToCart')}` : t('addToCart')}
+                  {addedFeedback ? ` ${t('addedToCart')}` : t('addToCart')}
                 </button>
 
                 <button
@@ -451,7 +463,7 @@ export default function ProductDetailPage() {
                   rel="noopener noreferrer"
                   className="py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition"
                 >
-                  <span>💬</span>
+                  <span></span>
                   <span>{t('askOnWhatsApp')}</span>
                 </a>
                 <a
@@ -460,7 +472,7 @@ export default function ProductDetailPage() {
                   rel="noopener noreferrer"
                   className="py-2.5 px-4 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200 font-bold text-xs flex items-center justify-center gap-2 transition"
                 >
-                  <span>📲</span>
+                  <span></span>
                   <span>{t('shareOnWhatsApp')}</span>
                 </a>
               </div>
@@ -473,10 +485,10 @@ export default function ProductDetailPage() {
           <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
             <div>
               <h2 className="text-xl font-bold text-stone-900">
-                ⭐ {t('customerReviews')} ({reviews.length})
+                {t('customerReviews')} ({reviews.length})
               </h2>
               <p className="text-xs text-stone-500 mt-0.5">
-                100% Verified Boutique Buyers • Average Rating {product.rating.toFixed(1)} / 5.0
+                100% Verified Boutique Buyers | Average Rating {product.rating.toFixed(1)} / 5.0
               </p>
             </div>
             <button
@@ -484,7 +496,7 @@ export default function ProductDetailPage() {
               onClick={() => setShowReviewForm((v) => !v)}
               className="px-4 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200 text-xs font-bold transition"
             >
-              ✍️ {t('writeReview')}
+              {t('writeReview')}
             </button>
           </div>
 
@@ -513,9 +525,9 @@ export default function ProductDetailPage() {
                 onChange={(e) => setRevRating(Number(e.target.value))}
                 className="px-3 py-2 rounded-xl border border-stone-300 text-sm font-semibold bg-white"
               >
-                <option value={5}>★★★★★ (5/5 Excellent)</option>
-                <option value={4}>★★★★☆ (4/5 Very Good)</option>
-                <option value={3}>★★★☆☆ (3/5 Good)</option>
+                <option value={5}> (5/5 Excellent)</option>
+                <option value={4}> (4/5 Very Good)</option>
+                <option value={3}> (3/5 Good)</option>
               </select>
               <textarea
                 required
@@ -544,14 +556,14 @@ export default function ProductDetailPage() {
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="font-bold text-sm text-stone-900">{rev.customer_name}</span>
-                    <span className="text-amber-600 text-xs font-bold">
-                      {'★'.repeat(rev.rating)}
+                    <span className="text-amber-700 text-xs font-bold font-mono">
+                      {rev.rating}.0 / 5
                     </span>
                   </div>
                   <p className="text-xs text-stone-600 leading-relaxed">{rev.comment}</p>
                 </div>
                 <div className="mt-3 pt-2 border-t border-stone-200/60 flex items-center justify-between text-[11px] text-stone-400">
-                  <span className="text-emerald-700 font-semibold">✓ Verified Buyer • {rev.city}</span>
+                  <span className="text-emerald-700 font-semibold">Verified Buyer | {rev.city}</span>
                   <span>{new Date(rev.created_at).toLocaleDateString('en-IN')}</span>
                 </div>
               </div>
@@ -580,14 +592,14 @@ export default function ProductDetailPage() {
           <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-xl border border-stone-200">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-extrabold text-stone-900">
-                📏 Indian Kurti Size Guide (Inches)
+                Indian Kurti Size Guide (Inches)
               </h3>
               <button
                 type="button"
                 onClick={() => setShowSizeModal(false)}
-                className="w-8 h-8 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold"
+                className="px-3 py-1 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-bold"
               >
-                ✕
+                Close
               </button>
             </div>
             <table className="w-full text-xs sm:text-sm text-left border border-stone-200 rounded-xl overflow-hidden">

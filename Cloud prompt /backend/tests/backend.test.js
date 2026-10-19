@@ -93,7 +93,8 @@ describe('Phases 3–10 Backend API — Products, Coupons, Auto Stock Deduction,
     assert.equal(o1.subtotalPaise, 159800);
     assert.equal(o1.discountPaise, 15980);
     assert.equal(o1.amountPaise, 143820);
-    assert.equal(o1.invoiceNumber.startsWith('ZJ/2026-27/'), true);
+    assert.equal(/^ORD-\d{6}-08-\d{4}$/.test(o1.orderId), true);
+    assert.equal(/^INV-KC-2026-\d{4}$/.test(o1.invoiceNumber), true);
     assert.equal(o1.expiresInSeconds, 240);
 
     const res2 = await app.inject({

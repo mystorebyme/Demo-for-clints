@@ -4,9 +4,14 @@ const { redis } = require('../config/redis');
 const { emitToOrder } = require('./socket');
 const { notifyOrderConfirmed } = require('./telegram');
 
-// 48-bit (12 hex chars) cryptographic Tracking ID so no unauthorized party can guess or enumerate another customer's tracking ID
+// Structured 12-Digit Courier AWB + Security PIN Tracking ID: TRK-KC-YYMMDD + 08 (Rajasthan) + 4-Digit Secret PIN
 function generateTrackingId() {
-  return `TRK-KC-${crypto.randomBytes(6).toString('hex').toUpperCase()}`;
+  const now = new Date();
+  const yy = String(now.getFullYear()).slice(-2);
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  const pin4 = String(crypto.randomInt(1000, 10000));
+  return `TRK-KC-${yy}${mm}${dd}08${pin4}`;
 }
 
 function getDefaultEstimatedDelivery() {

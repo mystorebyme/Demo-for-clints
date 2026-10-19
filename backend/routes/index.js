@@ -108,6 +108,8 @@ module.exports = async function routes(app) {
   app.post('/api/delivery/check', orders.checkDelivery);
   app.post('/api/inquiries', orders.submitProductInquiry);
   app.post('/api/orders/:orderId/notify-owner', orders.notifyOwnerOfConfirmedOrder);
+  app.get('/api/account', orders.getAccount);
+  app.post('/api/account', orders.postAccount);
 
   app.post(
     '/api/create-order',

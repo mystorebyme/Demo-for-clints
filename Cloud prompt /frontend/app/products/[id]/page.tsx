@@ -6,7 +6,13 @@ import { useParams, useRouter } from 'next/navigation';
 import Header from '../../../components/Header';
 import Footer from '../../../components/Footer';
 import ProductCard, { formatEthnicSizeLabel } from '../../../components/ProductCard';
-import { DEMO_PRODUCTS, getProductById, getProductPriceForSize, Product } from '../../../lib/catalog';
+import {
+  DEMO_PRODUCTS,
+  getProductById,
+  getProductPriceForSize,
+  getSizeMeasurements,
+  Product,
+} from '../../../lib/catalog';
 import {
   buildWhatsAppOrderUrl,
   buildWhatsAppShareUrl,
@@ -297,7 +303,29 @@ export default function ProductDetailPage() {
   const galleryImages =
     product.gallery && product.gallery.length > 0
       ? product.gallery
-      : [product.image_url, product.hover_image_url].filter(Boolean) as string[];
+      : ([product.image_url, product.hover_image_url].filter(Boolean) as string[]);
+
+  const galleryCaptions = product.gallery_captions || [
+    'Front Studio View',
+    'Artisan Craft Close-Up',
+    'Silhouette & Flare Angle',
+    'Border & Finishing Detail',
+    'Complete Ensemble Drape',
+    'Atelier Quality Inspection View',
+  ];
+  const activeImageIndex = Math.max(
+    0,
+    galleryImages.findIndex((img) => img === (activeImage || product.image_url))
+  );
+  const sizeMeasurements = getSizeMeasurements(product, selectedSize);
+  const displayLongDesc =
+    lang === 'hi' && product.long_description_hi
+      ? product.long_description_hi
+      : product.long_description || displayDesc;
+  const displayPackageContents =
+    lang === 'hi' && product.package_contents_hi
+      ? product.package_contents_hi
+      : product.package_contents || '1 Handcrafted Creation + Protective Muslin/Velvet Packaging';
 
   const specs = buildGarmentSpecifications(product);
 
@@ -470,7 +498,7 @@ export default function ProductDetailPage() {
         </nav>
 
         <div className="bg-white rounded-3xl border border-stone-200 shadow-sm p-5 sm:p-10 grid grid-cols-1 md:grid-cols-2 gap-8 lg:gap-12">
-          {/* Product Image & Interactive Gallery with Full-Screen Zoom Lightbox */}
+          {/* Product Image & 6-Angle Interactive Studio Gallery with Full-Screen Zoom Lightbox */}
           <div className="space-y-3">
             <div className="relative aspect-[4/5] rounded-2xl bg-stone-100 overflow-hidden border border-stone-200/60 group">
               <img
@@ -491,6 +519,35 @@ export default function ProductDetailPage() {
                   </span>
                 )}
               </div>
+
+              {/* Prev / Next Gallery Angle Arrows */}
+              {galleryImages.length > 1 && (
+                <>
+                  <button
+                    type="button"
+                    aria-label="Previous image"
+                    onClick={() => {
+                      const prevIdx =
+                        (activeImageIndex - 1 + galleryImages.length) % galleryImages.length;
+                      setActiveImage(galleryImages[prevIdx]);
+                    }}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-white/90 hover:bg-stone-950 text-stone-900 hover:text-amber-300 shadow-md flex items-center justify-center font-bold text-base transition"
+                  >
+                    ‹
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Next image"
+                    onClick={() => {
+                      const nextIdx = (activeImageIndex + 1) % galleryImages.length;
+                      setActiveImage(galleryImages[nextIdx]);
+                    }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-white/90 hover:bg-stone-950 text-stone-900 hover:text-amber-300 shadow-md flex items-center justify-center font-bold text-base transition"
+                  >
+                    ›
+                  </button>
+                </>
+              )}
 
               <button
                 type="button"
@@ -517,7 +574,15 @@ export default function ProductDetailPage() {
                 </svg>
               </button>
 
-              {/* High-Resolution Zoom In Button (Inspired by thestoreofbufani.com) */}
+              {/* Angle Caption Pill */}
+              <div className="absolute bottom-4 left-4 px-3 py-1.5 rounded-xl bg-stone-950/85 text-white text-[11px] font-semibold backdrop-blur-sm">
+                View {activeImageIndex + 1} / {galleryImages.length} —{' '}
+                <span className="text-amber-300">
+                  {galleryCaptions[activeImageIndex] || `Studio View ${activeImageIndex + 1}`}
+                </span>
+              </div>
+
+              {/* High-Resolution Zoom In Button */}
               <button
                 type="button"
                 onClick={() => setShowZoomLightbox(true)}
@@ -530,16 +595,18 @@ export default function ProductDetailPage() {
               </button>
             </div>
 
+            {/* 6-Image Studio Thumbnail Grid */}
             {galleryImages.length > 1 && (
-              <div className="flex items-center gap-3 overflow-x-auto pb-1">
+              <div className="grid grid-cols-6 gap-2">
                 {galleryImages.map((imgUrl, idx) => (
                   <button
                     key={`${imgUrl}-${idx}`}
                     type="button"
                     onClick={() => setActiveImage(imgUrl)}
-                    className={`w-20 h-24 rounded-xl overflow-hidden border-2 transition shrink-0 ${
-                      (activeImage || product.image_url) === imgUrl
-                        ? 'border-rose-900 shadow-sm scale-105'
+                    title={galleryCaptions[idx] || `View ${idx + 1}`}
+                    className={`relative aspect-[4/5] rounded-xl overflow-hidden border-2 transition ${
+                      activeImageIndex === idx
+                        ? 'border-rose-900 shadow-sm ring-2 ring-rose-900/20'
                         : 'border-stone-200 opacity-75 hover:opacity-100'
                     }`}
                   >
@@ -548,6 +615,9 @@ export default function ProductDetailPage() {
                       alt={`${displayName} view ${idx + 1}`}
                       className="w-full h-full object-cover"
                     />
+                    <span className="absolute bottom-0.5 right-1 px-1 rounded bg-stone-950/75 text-[9px] font-mono text-amber-200">
+                      {idx + 1}
+                    </span>
                   </button>
                 ))}
               </div>
@@ -628,15 +698,31 @@ export default function ProductDetailPage() {
                 </div>
               </div>
 
-              <p className="text-stone-600 text-sm sm:text-base leading-relaxed mb-5">
-                {displayDesc}
-              </p>
+              {/* Rich Description + Package Contents */}
+              <div className="mb-5 space-y-2">
+                <p className="text-stone-700 text-sm sm:text-base leading-relaxed">
+                  {displayLongDesc}
+                </p>
+                <div className="p-2.5 rounded-xl bg-stone-50 border border-stone-200 text-xs text-stone-700 flex flex-wrap items-center justify-between gap-2">
+                  <span>
+                    <strong className="uppercase tracking-wider text-[10px] text-rose-900 mr-1.5">
+                      {lang === 'hi' ? 'पैकेज में शामिल:' : 'What Is in the Box:'}
+                    </strong>
+                    {displayPackageContents}
+                  </span>
+                  {product.origin_cluster && (
+                    <span className="font-mono text-[11px] font-semibold text-stone-500">
+                      Origin: {product.origin_cluster}
+                    </span>
+                  )}
+                </div>
+              </div>
 
-              {/* Size Selector with Bust Measurements (S [36]..XXL [44]) + Size Guide Modal Trigger */}
-              <div className="mb-5">
-                <div className="flex items-center justify-between mb-2">
+              {/* Size Selector with Bust Measurements (XS [34]..3XL [46]) + Live Size Measurements Strip */}
+              <div className="mb-5 space-y-3">
+                <div className="flex items-center justify-between">
                   <label className="block text-xs font-bold uppercase tracking-wider text-stone-500">
-                    {t('selectSize')} {product.category === 'kurti' ? '(Bust in Inches)' : ''}
+                    {t('selectSize')}: <span className="text-stone-900">{sizeMeasurements.sizeLabel}</span>
                   </label>
                   {product.category === 'kurti' && (
                     <button
@@ -644,7 +730,7 @@ export default function ProductDetailPage() {
                       onClick={() => setShowSizeModal(true)}
                       className="text-xs font-bold text-rose-800 hover:underline flex items-center gap-1"
                     >
-                      {t('sizeGuide')} (S [36] – XXL [44])
+                      {t('sizeGuide')} (XS [34] – 3XL [46])
                     </button>
                   )}
                 </div>
@@ -674,6 +760,35 @@ export default function ProductDetailPage() {
                       </button>
                     );
                   })}
+                </div>
+
+                {/* Live Measurements Card for Selected Size */}
+                <div className="p-3 rounded-2xl bg-stone-50 border border-stone-200/90 space-y-2">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <span className="text-[10px] uppercase tracking-wider font-extrabold text-rose-900">
+                      {lang === 'hi'
+                        ? `चयनित साइज़ (${sizeMeasurements.sizeLabel}) का सटीक माप`
+                        : `Exact Measurements for Selected Size (${sizeMeasurements.sizeLabel})`}
+                    </span>
+                    <span className="text-[11px] font-semibold text-emerald-800">
+                      {lang === 'hi' ? sizeMeasurements.fitSummaryHi : sizeMeasurements.fitSummary}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                    {sizeMeasurements.metrics.map((m) => (
+                      <div
+                        key={m.label}
+                        className="px-2.5 py-1.5 rounded-xl bg-white border border-stone-200/80"
+                      >
+                        <p className="text-[10px] text-stone-500 font-semibold">
+                          {lang === 'hi' ? m.labelHi : m.label}
+                        </p>
+                        <p className="font-mono font-bold text-stone-900 text-[11px] mt-0.5">
+                          {m.value}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
 
@@ -1380,39 +1495,53 @@ export default function ProductDetailPage() {
               </thead>
               <tbody className="divide-y divide-stone-200">
                 <tr>
+                  <td className="p-2.5 font-bold">XS [34]</td>
+                  <td className="p-2.5">34&quot;</td>
+                  <td className="p-2.5">30&quot;</td>
+                  <td className="p-2.5">36&quot;</td>
+                  <td className="p-2.5">45&quot;</td>
+                </tr>
+                <tr>
                   <td className="p-2.5 font-bold">S [36]</td>
                   <td className="p-2.5">36&quot;</td>
                   <td className="p-2.5">32&quot;</td>
                   <td className="p-2.5">38&quot;</td>
-                  <td className="p-2.5">44&quot;</td>
+                  <td className="p-2.5">45&quot;</td>
                 </tr>
                 <tr>
                   <td className="p-2.5 font-bold">M [38]</td>
                   <td className="p-2.5">38&quot;</td>
                   <td className="p-2.5">34&quot;</td>
                   <td className="p-2.5">40&quot;</td>
-                  <td className="p-2.5">44&quot;</td>
+                  <td className="p-2.5">46&quot;</td>
                 </tr>
                 <tr>
                   <td className="p-2.5 font-bold">L [40]</td>
                   <td className="p-2.5">40&quot;</td>
                   <td className="p-2.5">36&quot;</td>
                   <td className="p-2.5">42&quot;</td>
-                  <td className="p-2.5">45&quot;</td>
+                  <td className="p-2.5">46&quot;</td>
                 </tr>
                 <tr>
                   <td className="p-2.5 font-bold">XL [42]</td>
                   <td className="p-2.5">42&quot;</td>
                   <td className="p-2.5">38&quot;</td>
                   <td className="p-2.5">44&quot;</td>
-                  <td className="p-2.5">45&quot;</td>
+                  <td className="p-2.5">46.5&quot;</td>
                 </tr>
                 <tr>
                   <td className="p-2.5 font-bold">XXL [44]</td>
                   <td className="p-2.5">44&quot;</td>
                   <td className="p-2.5">40&quot;</td>
                   <td className="p-2.5">46&quot;</td>
+                  <td className="p-2.5">47&quot;</td>
+                </tr>
+                <tr>
+                  <td className="p-2.5 font-bold">3XL [46]</td>
                   <td className="p-2.5">46&quot;</td>
+                  <td className="p-2.5">42&quot;</td>
+                  <td className="p-2.5">48&quot;</td>
+                  <td className="p-2.5">47&quot;</td>
                 </tr>
               </tbody>
             </table>

@@ -15,6 +15,17 @@ export type CartItem = {
   category?: string;
 };
 
+export type SavedAddressItem = {
+  id: string;
+  label: 'Home' | 'Work' | 'Other';
+  recipientName: string;
+  phone: string;
+  pincode: string;
+  cityState: string;
+  addressLine: string;
+  isDefault: boolean;
+};
+
 export type CustomerProfile = {
   email: string;
   name: string;
@@ -22,6 +33,7 @@ export type CustomerProfile = {
   pincode: string;
   cityState: string;
   address: string;
+  savedAddresses?: SavedAddressItem[];
   sessionToken?: string;
   emailVerified?: boolean;
   connectedAt?: string | null;
@@ -144,6 +156,7 @@ function loadInitialProfile(): CustomerProfile {
           ? parsed.cityState
           : 'Jaipur, Rajasthan',
       address: typeof parsed?.address === 'string' ? parsed.address : '',
+      savedAddresses: Array.isArray(parsed?.savedAddresses) ? parsed.savedAddresses : [],
       sessionToken: typeof parsed?.sessionToken === 'string' ? parsed.sessionToken : '',
       emailVerified: Boolean(parsed?.emailVerified),
       connectedAt: typeof parsed?.connectedAt === 'string' ? parsed.connectedAt : null,
@@ -369,6 +382,7 @@ export const useStore = create<State>((set, get) => ({
           pincode: updated.pincode,
           cityState: updated.cityState,
           address: updated.address,
+          savedAddresses: updated.savedAddresses,
           wishlist: get().wishlist,
         }),
       }).catch(() => {});

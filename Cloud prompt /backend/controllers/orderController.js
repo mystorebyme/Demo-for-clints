@@ -450,6 +450,90 @@ async function submitProductInquiry(req, reply) {
   return result;
 }
 
+const fs = require('fs');
+const path = require('path');
+
+function loadRuntimeAccountsMap() {
+  const map = new Map();
+  try {
+    const dbPath = path.resolve(__dirname, '../../database/runtime_accounts.json');
+    if (fs.existsSync(dbPath)) {
+      const arr = JSON.parse(fs.readFileSync(dbPath, 'utf8'));
+      if (Array.isArray(arr)) {
+        for (const a of arr) {
+          if (a && a.email) map.set(String(a.email).toLowerCase(), a);
+        }
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return map;
+}
+
+function saveRuntimeAccountsMap(map) {
+  try {
+    const dbPath = path.resolve(__dirname, '../../database/runtime_accounts.json');
+    fs.writeFileSync(dbPath, JSON.stringify(Array.from(map.values()), null, 2), 'utf8');
+  } catch {
+    // ignore
+  }
+}
+
+async function getAccount(req, reply) {
+  const email = sanitizeText(req.query?.email || '', 120).toLowerCase();
+  if (!email || !email.includes('@')) {
+    return reply.code(400).send({ error: 'Invalid email address' });
+  }
+  const map = loadRuntimeAccountsMap();
+  const profile = map.get(email) || {
+    email,
+    name: '',
+    phone: '',
+    pincode: '302001',
+    cityState: 'Jaipur, Rajasthan',
+    address: '',
+    wishlist: [],
+    savedAddresses: [],
+    updated_at: new Date().toISOString(),
+  };
+  const { rows: allProducts } = await pool.query('SELECT * FROM products ORDER BY id');
+  const wishlistIds = Array.isArray(profile.wishlist) ? profile.wishlist : [];
+  const wishlistProducts = allProducts.filter((p) => wishlistIds.includes(p.id));
+  const safeProfile = { ...profile };
+  delete safeProfile.password_hash;
+  return { profile: safeProfile, wishlistProducts, orders: [] };
+}
+
+async function postAccount(req, reply) {
+  const body = req.body || {};
+  const email = sanitizeText(body.email || '', 120).toLowerCase();
+  if (!email || !email.includes('@')) {
+    return reply.code(400).send({ error: 'Invalid email address' });
+  }
+  const map = loadRuntimeAccountsMap();
+  const existing = map.get(email) || { email, wishlist: [], savedAddresses: [] };
+  const updated = {
+    ...existing,
+    email,
+    name: body.name !== undefined ? sanitizeText(body.name, 120) : existing.name || '',
+    phone: body.phone !== undefined ? String(body.phone).replace(/\D/g, '').slice(-10) : existing.phone || '',
+    pincode: body.pincode !== undefined ? String(body.pincode).replace(/\D/g, '').slice(0, 6) : existing.pincode || '302001',
+    cityState: body.cityState !== undefined ? sanitizeText(body.cityState, 100) : existing.cityState || 'Jaipur, Rajasthan',
+    address: body.address !== undefined ? sanitizeText(body.address, 400) : existing.address || '',
+    wishlist: Array.isArray(body.wishlist) ? body.wishlist : existing.wishlist || [],
+    savedAddresses: Array.isArray(body.savedAddresses) ? body.savedAddresses : existing.savedAddresses || [],
+    updated_at: new Date().toISOString(),
+  };
+  map.set(email, updated);
+  saveRuntimeAccountsMap(map);
+  const { rows: allProducts } = await pool.query('SELECT * FROM products ORDER BY id');
+  const wishlistProducts = allProducts.filter((p) => updated.wishlist.includes(p.id));
+  const safeProfile = { ...updated };
+  delete safeProfile.password_hash;
+  return { success: true, profile: safeProfile, wishlistProducts, orders: [] };
+}
+
 module.exports = {
   listProducts,
   getProductById,
@@ -461,4 +545,6 @@ module.exports = {
   checkDelivery,
   notifyOwnerOfConfirmedOrder,
   submitProductInquiry,
+  getAccount,
+  postAccount,
 };

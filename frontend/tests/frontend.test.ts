@@ -7,6 +7,7 @@ import {
   enrichProduct,
   filterAndSortProducts,
   getProductPriceForSize,
+  getSizeMeasurements,
   paginateProducts,
 } from '../lib/catalog';
 import {
@@ -505,5 +506,107 @@ describe('Phase 1 Frontend — Zero-Trust Pricing, Coupons, Email Receipt Dispat
     });
     assert.equal(regOtp.success, true);
     assert.equal('otpPreview' in regOtp, false);
+  });
+
+  it('provides 6-image galleries, XS-3XL size measurements, and verified OTP login/password-reset/wishlist/address-book account workflows', async () => {
+    const {
+      getPendingOtpNotification,
+      requestLoginOtp,
+      verifyLoginOtp,
+      requestPasswordResetOtp,
+      verifyPasswordResetOtpAndSetPassword,
+      upsertCustomerAccount,
+    } = await import('../lib/serverStore');
+
+    // 1. All 216 products have 6 gallery images, angle captions, rich descriptions, and per-size measurements
+    for (const p of DEMO_PRODUCTS) {
+      assert.equal(Array.isArray(p.gallery), true);
+      assert.equal(p.gallery!.length, 6, `Product #${p.id} must have 6 gallery images`);
+      assert.equal(p.gallery_captions?.length, 6);
+      assert.equal(Boolean(p.long_description && p.long_description.length > 40), true);
+      assert.equal(Boolean(p.package_contents && p.package_contents.length > 5), true);
+    }
+
+    const kurti1 = DEMO_PRODUCTS[0];
+    assert.equal(kurti1.sizes.includes('XS'), true);
+    assert.equal(kurti1.sizes.includes('3XL'), true);
+    const m3xl = getSizeMeasurements(kurti1, '3XL');
+    assert.equal(
+      m3xl.metrics.some((m) => m.label.includes('Bust') && m.value.includes('46')),
+      true
+    );
+
+    // 2. Passwordless Email OTP Login flow for registered patron
+    const loginOtpReq = requestLoginOtp('priya.sharma@gmail.com');
+    assert.equal(loginOtpReq.success, true);
+    const notif = getPendingOtpNotification('priya.sharma@gmail.com');
+    assert.equal(Boolean(notif && notif.otpCode.length === 6), true);
+
+    const loginOtpVerify = verifyLoginOtp('priya.sharma@gmail.com', notif!.otpCode);
+    assert.equal(loginOtpVerify.success, true);
+    if (loginOtpVerify.success) {
+      assert.equal(loginOtpVerify.profile.email, 'priya.sharma@gmail.com');
+      assert.equal(loginOtpVerify.sessionToken.startsWith('zjsess_'), true);
+    }
+
+    // 3. Forgot Password / Reset Password via Email OTP flow
+    const resetReq = requestPasswordResetOtp('priya.sharma@gmail.com');
+    assert.equal(resetReq.success, true);
+    const resetNotif = getPendingOtpNotification('priya.sharma@gmail.com');
+    assert.equal(Boolean(resetNotif && resetNotif.otpCode.length === 6), true);
+
+    const resetVerify = verifyPasswordResetOtpAndSetPassword({
+      email: 'priya.sharma@gmail.com',
+      otp: resetNotif!.otpCode,
+      newPassword: 'PriyaNewPassword@2026',
+    });
+    assert.equal(resetVerify.success, true);
+
+    // Verify login works with the newly reset password
+    const loginWithNewPwd = authenticateOrRegisterAccount({
+      mode: 'login',
+      email: 'priya.sharma@gmail.com',
+      password: 'PriyaNewPassword@2026',
+    });
+    assert.equal(loginWithNewPwd.success, true);
+
+    // Restore default password for Priya
+    const restoreReq = requestPasswordResetOtp('priya.sharma@gmail.com');
+    assert.equal(restoreReq.success, true);
+    verifyPasswordResetOtpAndSetPassword({
+      email: 'priya.sharma@gmail.com',
+      otp: '100108',
+      newPassword: 'Priya@2026',
+    });
+
+    // 4. Saved Address Book & Wishlist sync on the account
+    const synced = upsertCustomerAccount({
+      email: 'priya.sharma@gmail.com',
+      wishlist: [1, 2, 5, 10],
+      savedAddresses: [
+        {
+          id: 'addr-1',
+          label: 'Home',
+          recipientName: 'Priya Sharma',
+          phone: '9876543210',
+          pincode: '302001',
+          cityState: 'Jaipur, Rajasthan',
+          addressLine: 'Flat 102, Rose Residency, MI Road',
+          isDefault: true,
+        },
+        {
+          id: 'addr-2',
+          label: 'Work',
+          recipientName: 'Priya Sharma',
+          phone: '9876543210',
+          pincode: '302022',
+          cityState: 'Jaipur, Rajasthan',
+          addressLine: 'Sitapura Industrial Area, Tonk Road',
+          isDefault: false,
+        },
+      ],
+    });
+    assert.equal(synced?.profile.wishlist.includes(10), true);
+    assert.equal(synced?.profile.savedAddresses?.length, 2);
   });
 });

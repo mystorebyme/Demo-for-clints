@@ -266,11 +266,75 @@ export default function CheckoutPage() {
               noValidate
               className="lg:col-span-2 bg-white rounded-3xl border border-stone-200 p-5 sm:p-8 shadow-sm space-y-4 sm:space-y-5"
             >
-              <div className="border-b border-stone-200 pb-3">
+              <div className="border-b border-stone-200 pb-3 flex flex-wrap items-center justify-between gap-2">
                 <h2 className="text-base sm:text-lg font-bold text-stone-900">
                   {t('customerDetails')}
                 </h2>
+                {customerProfile.email ? (
+                  <Link
+                    href="/profile"
+                    className="text-[11px] font-semibold text-amber-800 hover:underline"
+                  >
+                    {lang === 'hi'
+                      ? `साइन-इन खाता: ${customerProfile.email} (पते प्रबंधित करें)`
+                      : `Signed in as ${customerProfile.email} (Manage Addresses)`}
+                  </Link>
+                ) : (
+                  <Link
+                    href="/profile"
+                    className="text-[11px] font-semibold text-amber-800 hover:underline"
+                  >
+                    {lang === 'hi'
+                      ? 'सेव किए गए पते ऑटो-फिल करने के लिए साइन इन करें'
+                      : 'Sign in to auto-fill saved addresses'}
+                  </Link>
+                )}
               </div>
+
+              {customerProfile.savedAddresses && customerProfile.savedAddresses.length > 0 && (
+                <div className="rounded-2xl bg-amber-50/60 border border-amber-200/80 p-3.5">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-amber-950 mb-2">
+                    {lang === 'hi'
+                      ? 'अपने सेव किए गए खाते के पते में से चुनें:'
+                      : 'Quick-Fill from Your Saved Account Addresses:'}
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {customerProfile.savedAddresses.map((addr) => (
+                      <button
+                        key={addr.id}
+                        type="button"
+                        onClick={() => {
+                          if (addr.recipientName) setName(addr.recipientName);
+                          if (addr.phone) setPhone(addr.phone);
+                          setPincode(addr.pincode);
+                          setCityState(addr.cityState);
+                          setAddress(addr.addressLine);
+                        }}
+                        className={`text-left rounded-xl border p-2.5 transition ${
+                          address === addr.addressLine && pincode === addr.pincode
+                            ? 'border-stone-900 bg-white shadow-sm'
+                            : 'border-amber-200/90 bg-white/70 hover:bg-white'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[10px] font-bold uppercase tracking-wider bg-stone-900 text-white px-2 py-0.5 rounded">
+                            {addr.label}
+                          </span>
+                          <span className="font-mono text-[11px] font-bold text-stone-700">
+                            PIN {addr.pincode}
+                          </span>
+                        </div>
+                        <p className="text-xs font-semibold text-stone-900 mt-1 line-clamp-1">
+                          {addr.recipientName} ({addr.phone})
+                        </p>
+                        <p className="text-[11px] text-stone-600 line-clamp-1">
+                          {addr.addressLine}, {addr.cityState}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {serverError && (
                 <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-sm font-medium">

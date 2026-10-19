@@ -1,0 +1,71 @@
+[
+  {
+    "email": "priya.sharma@gmail.com",
+    "name": "Priya Sharma",
+    "phone": "9876543210",
+    "pincode": "302001",
+    "cityState": "Jaipur, Rajasthan",
+    "address": "Flat 102, Rose Residency, MI Road",
+    "wishlist": [
+      1,
+      2,
+      5,
+      10
+    ],
+    "savedAddresses": [
+      {
+        "id": "addr-1",
+        "label": "Home",
+        "recipientName": "Priya Sharma",
+        "phone": "9876543210",
+        "pincode": "302001",
+        "cityState": "Jaipur, Rajasthan",
+        "addressLine": "Flat 102, Rose Residency, MI Road",
+        "isDefault": true
+      },
+      {
+        "id": "addr-2",
+        "label": "Work",
+        "recipientName": "Priya Sharma",
+        "phone": "9876543210",
+        "pincode": "302022",
+        "cityState": "Jaipur, Rajasthan",
+        "addressLine": "Sitapura Industrial Area, Tonk Road",
+        "isDefault": false
+      }
+    ],
+    "password_hash": "e7b16b2433a18de7b7a47398f7059d96c495fc06595685ce64ee2ba2f979168f",
+    "email_verified": true,
+    "verified_at": "2026-10-19T14:52:16.620Z",
+    "updated_at": "2026-10-19T14:52:16.621Z"
+  },
+  {
+    "email": "ananya.verma@example.com",
+    "name": "Ananya Verma",
+    "phone": "9876543210",
+    "pincode": "302001",
+    "cityState": "Jaipur, Rajasthan",
+    "address": "42 MI Road, C-Scheme",
+    "wishlist": [
+      1,
+      7
+    ],
+    "savedAddresses": [],
+    "password_hash": "6a8e1cb7ab01b6b2ef17c3add307d3a78148b3a4435d01cb42c2c441704b759f",
+    "email_verified": true,
+    "verified_at": "2026-10-19T14:52:16.598Z",
+    "updated_at": "2026-10-19T14:52:16.599Z"
+  },
+  {
+    "email": "ananya.verma@gmail.com",
+    "name": "",
+    "phone": "",
+    "pincode": "",
+    "cityState": "Jaipur, Rajasthan",
+    "address": "",
+    "wishlist": [],
+    "email_verified": true,
+    "verified_at": "2026-10-19T14:52:16.599Z",
+    "updated_at": "2026-10-19T14:52:16.599Z"
+  }
+]

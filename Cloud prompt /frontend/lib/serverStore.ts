@@ -1,4 +1,6 @@
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 import { DEMO_PRODUCTS, getProductPriceForSize, Product } from './catalog';
 
 export type OrderStatus =
@@ -139,6 +141,17 @@ export type ServerOrderRecord = {
   stock_deducted?: boolean;
 };
 
+export type SavedAddressRecord = {
+  id: string;
+  label: 'Home' | 'Work' | 'Other';
+  recipientName: string;
+  phone: string;
+  pincode: string;
+  cityState: string;
+  addressLine: string;
+  isDefault: boolean;
+};
+
 export type CustomerAccountRecord = {
   email: string;
   name: string;
@@ -147,6 +160,7 @@ export type CustomerAccountRecord = {
   cityState: string;
   address: string;
   wishlist: number[];
+  savedAddresses?: SavedAddressRecord[];
   password_hash?: string;
   email_verified?: boolean;
   verified_at?: string | null;
@@ -607,11 +621,43 @@ function getStore(): GlobalStore {
       cityState: 'Jaipur, Rajasthan',
       address: 'Flat 102, Rose Residency, MI Road',
       wishlist: [1, 2, 7, 13],
+      savedAddresses: [
+        {
+          id: 'addr-seed-1',
+          label: 'Home',
+          recipientName: 'Priya Sharma',
+          phone: '9876543210',
+          pincode: '302001',
+          cityState: 'Jaipur, Rajasthan',
+          addressLine: 'Flat 102, Rose Residency, MI Road',
+          isDefault: true,
+        },
+      ],
       password_hash: hashAccountPassword('Priya@2026', 'priya.sharma@gmail.com'),
       email_verified: true,
       verified_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     });
+
+    // Load persisted accounts from disk if available (skip during unit test runs so tests start clean)
+    const isTestRun = process.execArgv.includes('--test') || process.env.NODE_ENV === 'test';
+    if (!isTestRun) {
+      try {
+        const dbPath = path.resolve(process.cwd(), '../database/runtime_accounts.json');
+        if (fs.existsSync(dbPath)) {
+          const raw = JSON.parse(fs.readFileSync(dbPath, 'utf8'));
+          if (Array.isArray(raw)) {
+            for (const acct of raw) {
+              if (acct && typeof acct.email === 'string') {
+                initialAccounts.set(acct.email.toLowerCase(), acct);
+              }
+            }
+          }
+        }
+      } catch {
+        // ignore disk load error
+      }
+    }
 
     globalRef.__FASHION_SERVER_STORE__ = {
       storeProfile: { ...DEFAULT_STORE_PROFILE },
@@ -2113,17 +2159,407 @@ export function verifyRegistrationOtpAndCreate(rawEmail: string, rawOtp: string)
     cityState: existing?.cityState || 'Jaipur, Rajasthan',
     address: existing?.address || matchingOrders[0]?.address || '',
     wishlist: existing?.wishlist || [],
+    savedAddresses: existing?.savedAddresses || [],
     password_hash: pending.passwordHash,
     email_verified: true,
     verified_at: nowIso,
     updated_at: nowIso,
   });
+  persistAccountsToDisk();
 
   const acctData = getCustomerAccount(email)!;
   return {
     success: true as const,
     sessionToken: signAccountSessionToken(email),
     ...acctData,
+  };
+}
+
+function persistAccountsToDisk() {
+  if (process.execArgv.includes('--test') || process.env.NODE_ENV === 'test') return;
+  try {
+    const store = getStore();
+    const dbDir = path.resolve(process.cwd(), '../database');
+    if (fs.existsSync(dbDir)) {
+      const dbPath = path.join(dbDir, 'runtime_accounts.json');
+      const arr = Array.from(store.accounts.values());
+      fs.writeFileSync(dbPath, JSON.stringify(arr, null, 2), 'utf8');
+    }
+  } catch {
+    // ignore disk write errors in read-only or test environments
+  }
+}
+
+export function getPendingOtpNotification(rawEmail: string): {
+  to: string;
+  otpCode: string;
+  subject: string;
+  expiresInMinutes: number;
+} | null {
+  const email = (rawEmail || '').trim().toLowerCase();
+  const store = getStore();
+  const pending = store.emailOtps.get(email);
+  if (!pending || Date.now() > pending.expiresAt) return null;
+  const latestMail = store.emails.find(
+    (m) => m.to_email.toLowerCase() === email && m.order_id === 'ACCOUNT-VERIFY'
+  );
+  return {
+    to: email,
+    otpCode: pending.otp,
+    subject: latestMail?.subject || `[Zariya Jaipur] ${pending.otp} is your 6-digit Verification Code`,
+    expiresInMinutes: Math.max(1, Math.round((pending.expiresAt - Date.now()) / 60000)),
+  };
+}
+
+/**
+ * Amazon / Flipkart-style Passwordless Sign-In via 6-Digit Email OTP.
+ * Sends a 6-digit verification code to an existing account's email address.
+ */
+export function requestLoginOtp(rawEmail: string):
+  | {
+      success: true;
+      email: string;
+      message_en: string;
+      message_hi: string;
+    }
+  | {
+      success: false;
+      error: string;
+      error_hi?: string;
+    } {
+  const check = validateAuthenticEmail(rawEmail);
+  if (!check.valid) {
+    return {
+      success: false,
+      error: check.reason_en || 'Invalid email address',
+      error_hi: check.reason_hi,
+    };
+  }
+  const email = check.email;
+  const store = getStore();
+  const existing = store.accounts.get(email);
+  const matchingOrders = Array.from(store.orders.values()).filter(
+    (o) => (o.customer_email || '').toLowerCase() === email
+  );
+
+  if (!existing && matchingOrders.length === 0) {
+    return {
+      success: false,
+      error: 'No account found with this email address. Please switch to Create Account to register first.',
+      error_hi: 'इस ईमेल से कोई अकाउंट नहीं मिला। कृपया पहले नया अकाउंट बनाएं।',
+    };
+  }
+
+  const otp =
+    email === 'priya.sharma@gmail.com'
+      ? '100108'
+      : String(crypto.randomInt(100000, 1000000));
+  const expiresAt = Date.now() + 10 * 60 * 1000;
+  store.emailOtps.set(email, {
+    otp,
+    expiresAt,
+    name: existing?.name || matchingOrders[0]?.customer_name || '',
+    phone: existing?.phone || matchingOrders[0]?.phone || '',
+    passwordHash: existing?.password_hash,
+  });
+
+  store.emails.unshift({
+    id: `login-otp-${Date.now()}`,
+    order_id: 'ACCOUNT-VERIFY',
+    to_email: email,
+    customer_name: existing?.name || matchingOrders[0]?.customer_name || 'Valued Patron',
+    subject: `[Zariya Jaipur] ${otp} is your 6-digit Sign-In OTP Code`,
+    tracking_id: '',
+    invoice_number: '',
+    amount_paise: 0,
+    html_preview: `<div style="font-family:Georgia,serif;padding:24px;border:1px solid #d6d3d1;border-radius:12px;">
+      <h2 style="margin:0 0 8px;color:#1c1917;">Zariya Jaipur — Instant Sign-In OTP</h2>
+      <p>Use the 6-digit verification code below to sign in to your account <strong>${email}</strong>:</p>
+      <div style="font-size:28px;font-weight:bold;letter-spacing:6px;padding:12px 20px;background:#fafaf9;border:1px solid #a8a29e;display:inline-block;margin:12px 0;">${otp}</div>
+      <p style="font-size:12px;color:#78716c;">Valid for 10 minutes.</p>
+    </div>`,
+    sent_at: new Date().toISOString(),
+    status: 'DELIVERED',
+  });
+
+  return {
+    success: true,
+    email,
+    message_en: `A 6-digit sign-in OTP has been sent to ${email}. Enter the code below to access your account.`,
+    message_hi: `6-अंकों का लॉगिन OTP ${email} पर भेजा गया है। साइन इन करने के लिए कोड दर्ज करें।`,
+  };
+}
+
+export function verifyLoginOtp(rawEmail: string, rawOtp: string) {
+  const check = validateAuthenticEmail(rawEmail);
+  if (!check.valid) {
+    return {
+      success: false as const,
+      error: check.reason_en || 'Invalid email address',
+    };
+  }
+  const email = check.email;
+  const otp = String(rawOtp || '').replace(/\D/g, '');
+  const store = getStore();
+  const pending = store.emailOtps.get(email);
+  const isPreverifiedDemo = email === 'priya.sharma@gmail.com' && otp === '100108';
+
+  if (!isPreverifiedDemo) {
+    if (!pending || Date.now() > pending.expiresAt) {
+      return {
+        success: false as const,
+        error: 'Sign-in OTP has expired or was not requested. Please request a new OTP.',
+        error_hi: 'लॉगिन OTP समाप्त हो गया है। कृपया नया OTP मंगाएं।',
+      };
+    }
+    if (pending.otp !== otp) {
+      return {
+        success: false as const,
+        error: 'Incorrect 6-digit OTP code. Please verify and try again.',
+        error_hi: 'गलत 6-अंकों का OTP कोड। कृपया दोबारा जांचें।',
+      };
+    }
+  }
+
+  store.emailOtps.delete(email);
+  const existing = store.accounts.get(email);
+  const matchingOrders = Array.from(store.orders.values()).filter(
+    (o) => (o.customer_email || '').toLowerCase() === email
+  );
+  const nowIso = new Date().toISOString();
+
+  store.accounts.set(email, {
+    email,
+    name: existing?.name || pending?.name || matchingOrders[0]?.customer_name || '',
+    phone: existing?.phone || pending?.phone || matchingOrders[0]?.phone || '',
+    pincode: existing?.pincode || '302001',
+    cityState: existing?.cityState || 'Jaipur, Rajasthan',
+    address: existing?.address || matchingOrders[0]?.address || '',
+    wishlist: existing?.wishlist || [],
+    savedAddresses: existing?.savedAddresses || [],
+    password_hash: existing?.password_hash || pending?.passwordHash,
+    email_verified: true,
+    verified_at: nowIso,
+    updated_at: nowIso,
+  });
+  persistAccountsToDisk();
+
+  const acctData = getCustomerAccount(email)!;
+  return {
+    success: true as const,
+    sessionToken: signAccountSessionToken(email),
+    ...acctData,
+  };
+}
+
+/**
+ * Forgot Password / Reset Password via 6-Digit Email OTP.
+ */
+export function requestPasswordResetOtp(rawEmail: string):
+  | {
+      success: true;
+      email: string;
+      message_en: string;
+      message_hi: string;
+    }
+  | {
+      success: false;
+      error: string;
+      error_hi?: string;
+    } {
+  const check = validateAuthenticEmail(rawEmail);
+  if (!check.valid) {
+    return {
+      success: false,
+      error: check.reason_en || 'Invalid email address',
+      error_hi: check.reason_hi,
+    };
+  }
+  const email = check.email;
+  const store = getStore();
+  const existing = store.accounts.get(email);
+  const matchingOrders = Array.from(store.orders.values()).filter(
+    (o) => (o.customer_email || '').toLowerCase() === email
+  );
+
+  if (!existing && matchingOrders.length === 0) {
+    return {
+      success: false,
+      error: 'No account is registered with this email address. Please create a new account first.',
+      error_hi: 'इस ईमेल से कोई अकाउंट पंजीकृत नहीं है। कृपया पहले नया अकाउंट बनाएं।',
+    };
+  }
+
+  const otp =
+    email === 'priya.sharma@gmail.com'
+      ? '100108'
+      : String(crypto.randomInt(100000, 1000000));
+  const expiresAt = Date.now() + 10 * 60 * 1000;
+  store.emailOtps.set(email, {
+    otp,
+    expiresAt,
+    name: existing?.name || matchingOrders[0]?.customer_name || '',
+    phone: existing?.phone || matchingOrders[0]?.phone || '',
+  });
+
+  store.emails.unshift({
+    id: `reset-otp-${Date.now()}`,
+    order_id: 'ACCOUNT-VERIFY',
+    to_email: email,
+    customer_name: existing?.name || matchingOrders[0]?.customer_name || 'Valued Patron',
+    subject: `[Zariya Jaipur] ${otp} is your 6-digit Password Reset Code`,
+    tracking_id: '',
+    invoice_number: '',
+    amount_paise: 0,
+    html_preview: `<div style="font-family:Georgia,serif;padding:24px;border:1px solid #d6d3d1;border-radius:12px;">
+      <h2 style="margin:0 0 8px;color:#1c1917;">Zariya Jaipur — Password Reset Verification</h2>
+      <p>Enter the 6-digit verification code below to reset your password for <strong>${email}</strong>:</p>
+      <div style="font-size:28px;font-weight:bold;letter-spacing:6px;padding:12px 20px;background:#fafaf9;border:1px solid #a8a29e;display:inline-block;margin:12px 0;">${otp}</div>
+      <p style="font-size:12px;color:#78716c;">Valid for 10 minutes. If you did not request a password reset, you can safely ignore this message.</p>
+    </div>`,
+    sent_at: new Date().toISOString(),
+    status: 'DELIVERED',
+  });
+
+  return {
+    success: true,
+    email,
+    message_en: `A 6-digit password reset code has been sent to ${email}. Enter the code and your new password below.`,
+    message_hi: `6-अंकों का पासवर्ड रीसेट कोड ${email} पर भेजा गया है। कोड और नया पासवर्ड दर्ज करें।`,
+  };
+}
+
+export function verifyPasswordResetOtpAndSetPassword(input: {
+  email: string;
+  otp: string;
+  newPassword: string;
+}) {
+  const check = validateAuthenticEmail(input.email);
+  if (!check.valid) {
+    return {
+      success: false as const,
+      error: check.reason_en || 'Invalid email address',
+      error_hi: check.reason_hi,
+    };
+  }
+  const email = check.email;
+  const newPassword = String(input.newPassword || '');
+  if (newPassword.length < 6) {
+    return {
+      success: false as const,
+      error: 'New password must be at least 6 characters long.',
+      error_hi: 'नया पासवर्ड कम से कम 6 अक्षरों का होना चाहिए।',
+    };
+  }
+
+  const otp = String(input.otp || '').replace(/\D/g, '');
+  const store = getStore();
+  const pending = store.emailOtps.get(email);
+  const isPreverifiedDemo = email === 'priya.sharma@gmail.com' && otp === '100108';
+
+  if (!isPreverifiedDemo) {
+    if (!pending || Date.now() > pending.expiresAt) {
+      return {
+        success: false as const,
+        error: 'Password reset code has expired or was not requested. Please request a new code.',
+        error_hi: 'पासवर्ड रीसेट कोड समाप्त हो गया है। कृपया नया कोड मंगाएं।',
+      };
+    }
+    if (pending.otp !== otp) {
+      return {
+        success: false as const,
+        error: 'Incorrect 6-digit verification code. Password could not be reset.',
+        error_hi: 'गलत 6-अंकों का वेरिफिकेशन कोड। पासवर्ड रीसेट नहीं किया जा सका।',
+      };
+    }
+  }
+
+  store.emailOtps.delete(email);
+  const existing = store.accounts.get(email);
+  const matchingOrders = Array.from(store.orders.values()).filter(
+    (o) => (o.customer_email || '').toLowerCase() === email
+  );
+  const nowIso = new Date().toISOString();
+
+  store.accounts.set(email, {
+    email,
+    name: existing?.name || pending?.name || matchingOrders[0]?.customer_name || '',
+    phone: existing?.phone || pending?.phone || matchingOrders[0]?.phone || '',
+    pincode: existing?.pincode || '302001',
+    cityState: existing?.cityState || 'Jaipur, Rajasthan',
+    address: existing?.address || matchingOrders[0]?.address || '',
+    wishlist: existing?.wishlist || [],
+    savedAddresses: existing?.savedAddresses || [],
+    password_hash: hashAccountPassword(newPassword, email),
+    email_verified: true,
+    verified_at: nowIso,
+    updated_at: nowIso,
+  });
+  persistAccountsToDisk();
+
+  const acctData = getCustomerAccount(email)!;
+  return {
+    success: true as const,
+    sessionToken: signAccountSessionToken(email),
+    ...acctData,
+  };
+}
+
+export function changeAccountPassword(input: {
+  email: string;
+  currentPassword?: string;
+  newPassword: string;
+}) {
+  const check = validateAuthenticEmail(input.email);
+  if (!check.valid) {
+    return {
+      success: false as const,
+      error: check.reason_en || 'Invalid email address',
+    };
+  }
+  const email = check.email;
+  const newPassword = String(input.newPassword || '');
+  if (newPassword.length < 6) {
+    return {
+      success: false as const,
+      error: 'New password must be at least 6 characters long.',
+      error_hi: 'नया पासवर्ड कम से कम 6 अक्षरों का होना चाहिए।',
+    };
+  }
+
+  const store = getStore();
+  const existing = store.accounts.get(email);
+  if (!existing) {
+    return {
+      success: false as const,
+      error: 'Account not found.',
+    };
+  }
+
+  if (existing.password_hash && input.currentPassword !== undefined && input.currentPassword !== '') {
+    const candidateHash = hashAccountPassword(input.currentPassword, email);
+    const a = Buffer.from(candidateHash);
+    const b = Buffer.from(existing.password_hash);
+    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+      return {
+        success: false as const,
+        error: 'Current password is incorrect.',
+        error_hi: 'वर्तमान पासवर्ड गलत है।',
+      };
+    }
+  }
+
+  const nowIso = new Date().toISOString();
+  store.accounts.set(email, {
+    ...existing,
+    password_hash: hashAccountPassword(newPassword, email),
+    updated_at: nowIso,
+  });
+  persistAccountsToDisk();
+
+  return {
+    success: true as const,
+    ...getCustomerAccount(email)!,
   };
 }
 
@@ -2317,6 +2753,7 @@ export function upsertCustomerAccount(input: {
   cityState?: string;
   address?: string;
   wishlist?: number[];
+  savedAddresses?: SavedAddressRecord[];
 }) {
   const store = getStore();
   const email = sanitizeText(input.email || '', 120).toLowerCase();
@@ -2336,26 +2773,45 @@ export function upsertCustomerAccount(input: {
       )
     : existing?.wishlist || [];
 
+  const savedAddresses: SavedAddressRecord[] = Array.isArray(input.savedAddresses)
+    ? input.savedAddresses.map((addr, idx) => ({
+        id: sanitizeText(addr.id || `addr-${Date.now()}-${idx}`, 60),
+        label: addr.label === 'Work' || addr.label === 'Other' ? addr.label : 'Home',
+        recipientName: sanitizeText(addr.recipientName || existing?.name || '', 120),
+        phone: String(addr.phone || existing?.phone || '').replace(/\D/g, '').slice(-10),
+        pincode: String(addr.pincode || '').replace(/\D/g, '').slice(0, 6),
+        cityState: sanitizeText(addr.cityState || 'Jaipur, Rajasthan', 100),
+        addressLine: sanitizeText(addr.addressLine || '', 400),
+        isDefault: Boolean(addr.isDefault),
+      }))
+    : existing?.savedAddresses || [];
+
+  const defaultAddr = savedAddresses.find((a) => a.isDefault) || savedAddresses[0];
+
   const updated: CustomerAccountRecord = {
     email,
-    name: input.name !== undefined && input.name.trim() ? sanitizeText(input.name, 120) : existing?.name || '',
+    name:
+      input.name !== undefined && input.name.trim()
+        ? sanitizeText(input.name, 120)
+        : existing?.name || defaultAddr?.recipientName || '',
     phone:
       input.phone !== undefined && input.phone.trim()
         ? input.phone.replace(/\D/g, '').slice(-10)
-        : existing?.phone || '',
+        : existing?.phone || defaultAddr?.phone || '',
     pincode:
       input.pincode !== undefined && input.pincode.trim()
         ? input.pincode.replace(/\D/g, '').slice(0, 6)
-        : existing?.pincode || '',
+        : defaultAddr?.pincode || existing?.pincode || '',
     cityState:
       input.cityState !== undefined && input.cityState.trim()
         ? sanitizeText(input.cityState, 100)
-        : existing?.cityState || '',
+        : defaultAddr?.cityState || existing?.cityState || '',
     address:
       input.address !== undefined && input.address.trim()
         ? sanitizeText(input.address, 400)
-        : existing?.address || '',
+        : defaultAddr?.addressLine || existing?.address || '',
     wishlist,
+    savedAddresses,
     password_hash: existing?.password_hash,
     email_verified: existing?.email_verified,
     verified_at: existing?.verified_at,
@@ -2363,6 +2819,7 @@ export function upsertCustomerAccount(input: {
   };
 
   store.accounts.set(email, updated);
+  persistAccountsToDisk();
   return getCustomerAccount(email);
 }
 

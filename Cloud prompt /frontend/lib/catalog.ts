@@ -13,10 +13,16 @@ export type Product = {
   image_url: string;
   hover_image_url?: string;
   gallery?: string[];
+  gallery_captions?: string[];
   stock: number;
   sizes: string[];
   description: string;
   description_hi: string;
+  long_description?: string;
+  long_description_hi?: string;
+  package_contents?: string;
+  package_contents_hi?: string;
+  styling_notes?: string;
   fabric_or_material?: string;
   care_instructions?: string;
   origin_cluster?: string;
@@ -27,6 +33,126 @@ export type Product = {
   featured?: boolean;
   is_demo?: boolean;
 };
+
+export type SizeMeasurementSpec = {
+  sizeLabel: string;
+  fitSummary: string;
+  fitSummaryHi: string;
+  metrics: Array<{ label: string; labelHi: string; value: string }>;
+};
+
+export function getSizeMeasurements(
+  product: Pick<Product, 'category' | 'name'>,
+  size: string
+): SizeMeasurementSpec {
+  if (product.category === 'kurti') {
+    const table: Record<
+      string,
+      { bust: string; waist: string; hip: string; shoulder: string; length: string; sleeve: string; bottom: string }
+    > = {
+      XS: { bust: '34 in (86 cm)', waist: '30 in (76 cm)', hip: '36 in (91 cm)', shoulder: '13.5 in', length: '45 in', sleeve: '16.5 in', bottom: '37 in' },
+      S: { bust: '36 in (91 cm)', waist: '32 in (81 cm)', hip: '38 in (96 cm)', shoulder: '14.0 in', length: '45 in', sleeve: '17.0 in', bottom: '38 in' },
+      M: { bust: '38 in (96 cm)', waist: '34 in (86 cm)', hip: '40 in (101 cm)', shoulder: '14.5 in', length: '46 in', sleeve: '17.0 in', bottom: '38 in' },
+      L: { bust: '40 in (101 cm)', waist: '36 in (91 cm)', hip: '42 in (106 cm)', shoulder: '15.0 in', length: '46 in', sleeve: '17.5 in', bottom: '38.5 in' },
+      XL: { bust: '42 in (106 cm)', waist: '38 in (96 cm)', hip: '44 in (112 cm)', shoulder: '15.5 in', length: '46.5 in', sleeve: '17.5 in', bottom: '39 in' },
+      XXL: { bust: '44 in (112 cm)', waist: '40 in (101 cm)', hip: '46 in (117 cm)', shoulder: '16.0 in', length: '47 in', sleeve: '18.0 in', bottom: '39 in' },
+      '2XL': { bust: '44 in (112 cm)', waist: '40 in (101 cm)', hip: '46 in (117 cm)', shoulder: '16.0 in', length: '47 in', sleeve: '18.0 in', bottom: '39 in' },
+      '3XL': { bust: '46 in (117 cm)', waist: '42 in (106 cm)', hip: '48 in (122 cm)', shoulder: '16.5 in', length: '47 in', sleeve: '18.0 in', bottom: '39.5 in' },
+    };
+    const m = table[size] || table.M;
+    return {
+      sizeLabel: `${size} [Bust ${m.bust.slice(0, 2)}]`,
+      fitSummary: `Ready-to-wear stitched garment with 1.5 inch inner seam margin for easy future alteration.`,
+      fitSummaryHi: `रेडी-टू-वियर सिला हुआ कुर्ता, अंदर 1.5 इंच अतिरिक्त मार्जिन के साथ।`,
+      metrics: [
+        { label: 'Bust', labelHi: 'बस्ट (छाती)', value: m.bust },
+        { label: 'Waist', labelHi: 'कमर', value: m.waist },
+        { label: 'Hip', labelHi: 'हिप', value: m.hip },
+        { label: 'Shoulder', labelHi: 'कंधा', value: m.shoulder },
+        { label: 'Kurta Length', labelHi: 'कुर्ता लंबाई', value: m.length },
+        { label: 'Sleeve Length', labelHi: 'आस्तीन', value: m.sleeve },
+        { label: 'Bottom Length', labelHi: 'पैंट/पलाज़ो लंबाई', value: m.bottom },
+        { label: 'Dupatta Span', labelHi: 'दुपट्टा लंबाई', value: '2.35 Meters' },
+      ],
+    };
+  }
+
+  if (product.category === 'bag') {
+    const bagTable: Record<string, { dim: string; strap: string; cap: string; weight: string }> = {
+      Compact: {
+        dim: '8.5 in (L) x 6.5 in (H) x 3.0 in (W)',
+        strap: '21 in Wrist / Crossbody Drop',
+        cap: 'Fits Phone (up to 6.9"), Keys, Cards & Lipstick',
+        weight: '290 Grams',
+      },
+      Regular: {
+        dim: '11.5 in (L) x 9.0 in (H) x 4.0 in (W)',
+        strap: '23 in Adjustable Shoulder Drop',
+        cap: 'Fits Phone, Wallet, Sunglass Case, Perfume & Charger',
+        weight: '380 Grams',
+      },
+      'Large Bridal': {
+        dim: '14.0 in (L) x 11.0 in (H) x 5.0 in (W)',
+        strap: '24 in Reinforced Dual Handle + Detachable Chain',
+        cap: 'Fits Bridal Essentials, Makeup Kit, Shawl & iPad/Tablet',
+        weight: '460 Grams',
+      },
+    };
+    const b = bagTable[size] || bagTable.Regular;
+    return {
+      sizeLabel: size,
+      fitSummary: 'Hand-quilted interior with zippered security pocket and dust-bag packaging.',
+      fitSummaryHi: 'ज़िप पॉकेट और कॉटन डस्ट-बैग पैकेजिंग के साथ हस्तनिर्मित बैग।',
+      metrics: [
+        { label: 'Dimensions', labelHi: 'आकार (L x H x W)', value: b.dim },
+        { label: 'Strap Drop', labelHi: 'स्ट्रैप लंबाई', value: b.strap },
+        { label: 'Capacity', labelHi: 'क्षमता', value: b.cap },
+        { label: 'Net Weight', labelHi: 'कुल वज़न', value: b.weight },
+      ],
+    };
+  }
+
+  const isDupatta = product.name.toLowerCase().includes('dupatta');
+  if (isDupatta || size.endsWith('m')) {
+    const lenMap: Record<string, string> = {
+      '2.25m': '2.25 Meters (88 Inches)',
+      '2.50m': '2.50 Meters (98 Inches)',
+      '2.75m': '2.75 Meters (108 Inches Royal Bridal Span)',
+    };
+    return {
+      sizeLabel: size,
+      fitSummary: 'Full-width handwoven drape with finished Zari pallu and hand-knotted tassels.',
+      fitSummaryHi: 'ज़री पल्लू और हाथ से गुंथे टैसल्स के साथ फुल-चौड़ाई दुपट्टा।',
+      metrics: [
+        { label: 'Drape Length', labelHi: 'दुपट्टा लंबाई', value: lenMap[size] || '2.35 Meters' },
+        { label: 'Width (Panna)', labelHi: 'चौड़ाई', value: '36 Inches (91 cm)' },
+        { label: 'Border Finish', labelHi: 'बॉर्डर फिनिश', value: 'Woven Zari & Hand-Knotted Latkans' },
+        { label: 'Weight', labelHi: 'वज़न', value: '165 Grams (Featherlight)' },
+      ],
+    };
+  }
+
+  return {
+    sizeLabel: size,
+    fitSummary: 'Adjustable sarafa silk dori lock and comfort ear-posts suitable for all-day festive wear.',
+    fitSummaryHi: 'एडजस्टेबल सराफा डोरी लॉक और आरामदायक पुश-बैक फिटिंग।',
+    metrics: [
+      {
+        label: 'Set Configuration',
+        labelHi: 'सेट विवरण',
+        value:
+          size === 'Complete Set'
+            ? 'Necklace + Bridal Jhumka Pair + Maang Tikka + Velvet Box'
+            : size === 'Bridal Pair'
+            ? 'Matched Bridal Pair + Heirloom Velvet Box'
+            : 'Single Statement Piece + Velvet Pouch',
+      },
+      { label: 'Closure / Fit', labelHi: 'फिटिंग', value: 'Adjustable Tassel Dori / Comfort Post' },
+      { label: 'Base & Plating', labelHi: 'प्लेटिंग', value: '22K Micron Gold / Silver over Nickel-Free Brass' },
+      { label: 'Weight', labelHi: 'वज़न', value: size === 'Single Piece' ? '38 Grams' : '76 Grams' },
+    ],
+  };
+}
 
 /**
  * Computes the authoritative price & MRP for a specific size of a product.
@@ -57,12 +183,13 @@ export function getProductPriceForSize(
 
   // Deterministic size-tier price schedule so every size has its own distinct price
   const sizeOffsetsPaise: Record<string, number> = {
-    XS: -6000,
+    XS: -8000,
     S: -4000,
     M: 0,
     L: 6000,
     XL: 12000,
     XXL: 18000,
+    '2XL': 18000,
     '3XL': 24000,
     'Free Size': 0,
     Standard: 0,
@@ -71,8 +198,10 @@ export function getProductPriceForSize(
     'Large Bridal': 22000,
     '2.25m': 0,
     '2.50m': 14000,
+    '2.75m': 26000,
     'Single Piece': 0,
     'Bridal Pair': 18000,
+    'Complete Set': 36000,
   };
 
   const delta = sizeOffsetsPaise[size] ?? 0;
@@ -83,21 +212,148 @@ export function getProductPriceForSize(
   return { price_paise, original_price_paise, size };
 }
 
+const CATEGORY_STUDIO_POOL: Record<ProductCategory, string[]> = {
+  kurti: [
+    '/products/kurti1.jpg',
+    '/products/kurti1-detail.jpg',
+    '/products/kurti2.jpg',
+    '/products/kurti2-detail.jpg',
+    '/products/kurti3.jpg',
+    '/products/kurti3-detail.jpg',
+    '/products/kurti4.jpg',
+    '/products/kurti4-detail.jpg',
+  ],
+  bag: [
+    '/products/bag1.jpg',
+    '/products/bag1-detail.jpg',
+    '/products/bag2.jpg',
+    '/products/bag2-detail.jpg',
+    '/products/bag3.jpg',
+    '/products/bag3-detail.jpg',
+    '/products/bag4.jpg',
+    '/products/bag4-detail.jpg',
+  ],
+  accessory: [
+    '/products/acc1.jpg',
+    '/products/acc1-detail.jpg',
+    '/products/acc2.jpg',
+    '/products/acc2-detail.jpg',
+    '/products/acc3.jpg',
+    '/products/acc3-detail.jpg',
+    '/products/acc4.jpg',
+    '/products/acc4-detail.jpg',
+  ],
+};
+
+function buildSixImageGallery(p: Product): string[] {
+  const pool = CATEGORY_STUDIO_POOL[p.category] || CATEGORY_STUDIO_POOL.kurti;
+  const seed = [
+    p.image_url,
+    p.hover_image_url,
+    ...(Array.isArray(p.gallery) ? p.gallery : []),
+  ].filter((u): u is string => Boolean(u));
+
+  const offset = p.id % pool.length;
+  for (let i = 0; i < pool.length; i++) {
+    const candidate = pool[(offset + i) % pool.length];
+    if (!seed.includes(candidate)) {
+      seed.push(candidate);
+    }
+    if (seed.length >= 6) break;
+  }
+  return seed.slice(0, 6);
+}
+
 function attachSizePriceMaps(p: Product): Product {
+  let expandedSizes = Array.isArray(p.sizes) && p.sizes.length > 0 ? [...p.sizes] : ['Free Size'];
+  if (p.category === 'kurti' && expandedSizes.includes('M')) {
+    expandedSizes = ['XS', 'S', 'M', 'L', 'XL', 'XXL', '3XL'];
+  } else if (p.category === 'accessory') {
+    if (expandedSizes.includes('2.25m') && !expandedSizes.includes('2.75m')) {
+      expandedSizes = ['2.25m', '2.50m', '2.75m'];
+    } else if (expandedSizes.includes('Single Piece') && !expandedSizes.includes('Complete Set')) {
+      expandedSizes = ['Single Piece', 'Bridal Pair', 'Complete Set'];
+    }
+  }
+
+  const withSizes: Product = { ...p, sizes: expandedSizes };
   const size_prices_paise: Record<string, number> = {};
   const size_original_prices_paise: Record<string, number> = {};
-  for (const sz of p.sizes) {
-    const computed = getProductPriceForSize(p, sz);
+  for (const sz of expandedSizes) {
+    const computed = getProductPriceForSize(withSizes, sz);
     size_prices_paise[sz] = computed.price_paise;
     size_original_prices_paise[sz] = computed.original_price_paise;
   }
+
+  const gallery = buildSixImageGallery(withSizes);
+  const gallery_captions = [
+    'Front Studio View',
+    'Artisan Craft & Surface Close-Up',
+    'Silhouette & Flare Angle',
+    'Border & Finishing Detail',
+    'Complete Ensemble Drape',
+    'Atelier Quality Inspection View',
+  ];
+
+  const cluster = p.origin_cluster || 'Johari Bazar Atelier, Jaipur';
+  const fabric =
+    p.fabric_or_material ||
+    (p.category === 'kurti'
+      ? '100% Pure Handloom Cotton & Silk Blend'
+      : p.category === 'bag'
+      ? 'Artisan Embroidered Textile & Brass Hardware'
+      : '22K Micron Plated Brass & Heritage Stones');
+
+  const long_description =
+    p.long_description ||
+    `${p.description} Crafted in small artisan batches at ${cluster} using ${fabric}. Every piece undergoes a 3-stage quality check for stitch density, colour fastness, and skin-friendly comfort, accompanied by an official CGST Rule 46(b) Tax Invoice and insured pan-India express delivery.`;
+
+  const long_description_hi =
+    p.long_description_hi ||
+    `${p.description_hi} ${cluster} के अनुभवी कारीगरों द्वारा ${fabric} से निर्मित। हर पीस 3-स्तरीय क्वालिटी जांच के बाद आधिकारिक GST बिल और इंश्योर्ड एक्सप्रेस डिलीवरी के साथ भेजा जाता है।`;
+
+  const package_contents =
+    p.package_contents ||
+    (p.category === 'kurti'
+      ? p.name.toLowerCase().includes('set') || p.name.toLowerCase().includes('anarkali') || p.name.toLowerCase().includes('sharara') || p.name.toLowerCase().includes('kalidar')
+        ? '1 Stitched Kurta + 1 Stitched Bottom/Palazzo + 1 Hand-Finished Dupatta + Breathable Muslin Garment Bag'
+        : '1 Stitched Artisan Kurta + Extra Seam Margin + Breathable Muslin Garment Bag'
+      : p.category === 'bag'
+      ? '1 Handcrafted Bag/Potli + Detachable Strap/Handle + Signature Cotton Dust Bag'
+      : p.name.toLowerCase().includes('dupatta')
+      ? '1 Full-Length Handwoven Dupatta + Protective Muslin Storage Pouch'
+      : '1 Handcrafted Jewellery Piece/Set + Heirloom Velvet Storage Box');
+
+  const package_contents_hi =
+    p.package_contents_hi ||
+    (p.category === 'kurti'
+      ? '1 रेडी-टू-वियर कुर्ता/सूट सेट + मलमल गारमेंट कवर'
+      : p.category === 'bag'
+      ? '1 हस्तनिर्मित बैग/पोटली + कॉटन डस्ट बैग'
+      : '1 आभूषण/दुपट्टा पीस + प्रीमियम स्टोरेज बॉक्स');
+
+  const styling_notes =
+    p.styling_notes ||
+    (p.category === 'kurti'
+      ? 'Pair with Bikaneri Jadau jhumkas, an embroidered velvet potli, and handcrafted leather juttis for weddings, festive pujas, and evening celebrations.'
+      : p.category === 'bag'
+      ? 'Effortlessly complements Anarkali suit sets, silk sarees, and contemporary festive silhouettes while keeping your phone and essentials organized.'
+      : 'Designed to frame traditional necklines and festive drapes with featherlight all-day comfort.');
+
   return {
-    ...p,
+    ...withSizes,
     sku:
       p.sku ||
       `ZJ-${p.category === 'kurti' ? 'KRT' : p.category === 'bag' ? 'BAG' : 'JWL'}-${String(
         p.id
       ).padStart(3, '0')}`,
+    gallery,
+    gallery_captions,
+    long_description,
+    long_description_hi,
+    package_contents,
+    package_contents_hi,
+    styling_notes,
     size_prices_paise,
     size_original_prices_paise,
   };

@@ -140,11 +140,11 @@ export default function CheckoutPage() {
   const displayGst = serverQuote?.gstPaise ?? Math.round((displayTotal * 5) / 105);
 
   return (
-    <div className="min-h-screen flex flex-col bg-stone-50">
+    <div className="min-h-screen flex flex-col bg-[#faf7f2]">
       <Header />
 
-      <main className="flex-1 max-w-6xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-stone-900 mb-6">
+      <main className="flex-1 max-w-6xl mx-auto w-full px-3 sm:px-6 lg:px-8 py-6 sm:py-12">
+        <h1 className="text-xl sm:text-3xl font-serif font-extrabold text-stone-900 mb-5 sm:mb-6">
           {t('checkout')}
         </h1>
 
@@ -159,29 +159,17 @@ export default function CheckoutPage() {
             </Link>
           </div>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8">
             {/* Checkout Form */}
             <form
               onSubmit={submitOrder}
               noValidate
-              className="lg:col-span-2 bg-white rounded-3xl border border-stone-200 p-6 sm:p-8 shadow-sm space-y-5"
+              className="lg:col-span-2 bg-white rounded-3xl border border-stone-200 p-5 sm:p-8 shadow-sm space-y-4 sm:space-y-5"
             >
-              <div className="flex items-center justify-between border-b border-stone-200 pb-3">
-                <h2 className="text-lg font-bold text-stone-900">{t('customerDetails')}</h2>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setName('Priya Sharma');
-                    setEmail('priya.sharma@gmail.com');
-                    setPhone('9876543210');
-                    setPincode('302001');
-                    setCityState('Jaipur, Rajasthan');
-                    setAddress('Flat 102, Rose Residency, MI Road, Near Ajmeri Gate');
-                  }}
-                  className="text-xs font-semibold text-rose-800 hover:underline"
-                >
-                  {lang === 'hi' ? 'त्वरित पता भरें (Quick Fill)' : 'Quick Fill Sample Patron'}
-                </button>
+              <div className="border-b border-stone-200 pb-3">
+                <h2 className="text-base sm:text-lg font-bold text-stone-900">
+                  {t('customerDetails')}
+                </h2>
               </div>
 
               {serverError && (
@@ -201,7 +189,7 @@ export default function CheckoutPage() {
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder={t('fullNamePlaceholder')}
-                    className="w-full px-4 py-2.5 rounded-xl border border-stone-300 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
+                    className="w-full px-4 py-3 rounded-xl border border-stone-300 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
                   />
                   {errors.name && <p className="text-xs text-rose-700 mt-1">{errors.name}</p>}
                 </div>
@@ -217,7 +205,7 @@ export default function CheckoutPage() {
                     value={phone}
                     onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
                     placeholder={t('phonePlaceholder')}
-                    className="w-full px-4 py-2.5 rounded-xl border border-stone-300 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
+                    className="w-full px-4 py-3 rounded-xl border border-stone-300 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
                   />
                   {errors.phone && <p className="text-xs text-rose-700 mt-1">{errors.phone}</p>}
                 </div>
@@ -233,12 +221,12 @@ export default function CheckoutPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder={t('emailPlaceholder')}
-                  className="w-full px-4 py-2.5 rounded-xl border border-stone-300 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
+                  className="w-full px-4 py-3 rounded-xl border border-stone-300 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
                 />
                 <p className="text-[11px] text-stone-500 mt-1">
                   {lang === 'hi'
-                    ? 'ऑर्डर कन्फर्म होते ही आपका GST टैक्स बिल और गोपनीय ट्रैकिंग आईडी इसी ईमेल पर भेजे जाएंगे।'
-                    : 'Your official GST Tax Invoice and confidential shipment Tracking ID will be emailed here immediately upon payment confirmation.'}
+                    ? 'ऑर्डर कन्फर्म होते ही आपका GST टैक्स बिल और ट्रैकिंग आईडी इसी ईमेल पर भेजे जाएंगे।'
+                    : 'Your official GST Tax Invoice and private Tracking ID will be emailed here immediately upon order confirmation.'}
                 </p>
                 {errors.email && <p className="text-xs text-rose-700 mt-1">{errors.email}</p>}
               </div>
@@ -254,7 +242,7 @@ export default function CheckoutPage() {
                     value={pincode}
                     onChange={(e) => setPincode(e.target.value.replace(/\D/g, ''))}
                     placeholder={t('pincodePlaceholder')}
-                    className="w-full px-4 py-2.5 rounded-xl border border-stone-300 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
+                    className="w-full px-4 py-3 rounded-xl border border-stone-300 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
                   />
                   {errors.pincode && <p className="text-xs text-rose-700 mt-1">{errors.pincode}</p>}
                 </div>
@@ -268,7 +256,7 @@ export default function CheckoutPage() {
                     value={cityState}
                     onChange={(e) => setCityState(e.target.value)}
                     placeholder={t('cityStatePlaceholder')}
-                    className="w-full px-4 py-2.5 rounded-xl border border-stone-300 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
+                    className="w-full px-4 py-3 rounded-xl border border-stone-300 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
                   />
                 </div>
               </div>
@@ -283,7 +271,7 @@ export default function CheckoutPage() {
                   value={address}
                   onChange={(e) => setAddress(e.target.value)}
                   placeholder={t('addressPlaceholder')}
-                  className="w-full px-4 py-2.5 rounded-xl border border-stone-300 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
+                  className="w-full px-4 py-3 rounded-xl border border-stone-300 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
                 />
                 {errors.address && <p className="text-xs text-rose-700 mt-1">{errors.address}</p>}
               </div>
@@ -305,14 +293,14 @@ export default function CheckoutPage() {
                 {loading
                   ? lang === 'hi'
                     ? 'सुरक्षित ऑर्डर बनाया जा रहा है...'
-                    : 'Generating Encrypted UPI Order...'
+                    : 'Generating Secure UPI QR...'
                   : `${t('payNow')} (${rupees(displayTotal)})`}
               </button>
             </form>
 
             {/* Summary Sidebar + Quick Coupon Switcher */}
-            <aside className="bg-white rounded-3xl border border-stone-200 p-6 shadow-sm h-fit space-y-4">
-              <h2 className="text-lg font-bold text-stone-900 border-b border-stone-200 pb-3">
+            <aside className="bg-white rounded-3xl border border-stone-200 p-5 sm:p-6 shadow-sm h-fit space-y-4">
+              <h2 className="text-base sm:text-lg font-bold text-stone-900 border-b border-stone-200 pb-3">
                 {t('orderSummary')}
               </h2>
 
@@ -344,13 +332,13 @@ export default function CheckoutPage() {
                     value={couponInput}
                     onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
                     placeholder="DIWALI20 / FIRST10"
-                    className="flex-1 px-2.5 py-1.5 rounded-lg border border-stone-300 text-xs font-mono font-bold uppercase bg-white"
+                    className="flex-1 px-2.5 py-2 rounded-lg border border-stone-300 text-xs font-mono font-bold uppercase bg-white"
                   />
                   {appliedCoupon ? (
                     <button
                       type="button"
                       onClick={() => handleApplyCoupon('')}
-                      className="px-2.5 py-1.5 rounded-lg bg-stone-200 text-stone-800 text-xs font-bold"
+                      className="px-2.5 py-2 rounded-lg bg-stone-200 text-stone-800 text-xs font-bold"
                     >
                       ✕
                     </button>
@@ -358,7 +346,7 @@ export default function CheckoutPage() {
                     <button
                       type="button"
                       onClick={() => handleApplyCoupon()}
-                      className="px-3 py-1.5 rounded-lg bg-rose-900 text-white text-xs font-bold"
+                      className="px-3 py-2 rounded-lg bg-rose-900 text-white text-xs font-bold"
                     >
                       Apply
                     </button>

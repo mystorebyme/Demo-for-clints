@@ -34,8 +34,8 @@ type TrackedOrder = {
 
 const TRACKING_STEPS = [
   { key: 'ORDER_PLACED', label: 'Order Confirmed', icon: '✓' },
-  { key: 'PACKED', label: 'Packed at Warehouse', icon: '📦' },
-  { key: 'SHIPPED', label: 'Shipped via Courier', icon: '🚚' },
+  { key: 'PACKED', label: 'Packed at Atelier', icon: '📦' },
+  { key: 'SHIPPED', label: 'Shipped via Air', icon: '🚚' },
   { key: 'OUT_FOR_DELIVERY', label: 'Out for Delivery', icon: '🛵' },
   { key: 'DELIVERED', label: 'Delivered', icon: '🎉' },
 ];
@@ -61,13 +61,13 @@ export default function TrackOrderPage() {
         setOrder(null);
         setError(
           data.error ||
-            'Invalid or unverified Tracking ID. For privacy protection, only exact confidential Tracking IDs emailed upon order confirmation can be searched.'
+            'Please enter the valid Tracking ID sent to your email upon order confirmation.'
         );
       } else {
         setOrder(data);
       }
     } catch {
-      setError('Network error while fetching tracking status.');
+      setError('Could not connect to tracking service. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -102,20 +102,20 @@ export default function TrackOrderPage() {
     : -1;
 
   return (
-    <div className="min-h-screen flex flex-col bg-stone-50">
+    <div className="min-h-screen flex flex-col bg-[#faf7f2]">
       <Header />
 
-      <main className="flex-1 max-w-4xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-6">
+      <main className="flex-1 max-w-4xl mx-auto w-full px-3 sm:px-6 lg:px-8 py-6 sm:py-12 space-y-6">
         {/* Search Box Card */}
-        <div className="bg-white rounded-3xl border border-stone-200 p-6 sm:p-8 shadow-sm">
+        <div className="bg-white rounded-3xl border border-stone-200 p-5 sm:p-8 shadow-sm">
           <div className="max-w-2xl">
             <span className="inline-block px-3 py-1 rounded-full bg-rose-100 text-rose-900 text-xs font-extrabold uppercase tracking-wider mb-2">
-              🔒 Confidential Real-Time Shipment Radar
+              📦 Live Shipment Tracking
             </span>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-stone-900">
+            <h1 className="text-xl sm:text-3xl font-serif font-extrabold text-stone-900">
               {t('trackOrderTitle')}
             </h1>
-            <p className="text-sm text-stone-600 mt-1">{t('trackOrderSubtitle')}</p>
+            <p className="text-xs sm:text-sm text-stone-600 mt-1">{t('trackOrderSubtitle')}</p>
           </div>
 
           <form
@@ -123,14 +123,14 @@ export default function TrackOrderPage() {
               e.preventDefault();
               lookupOrder(queryId);
             }}
-            className="mt-6 flex flex-col sm:flex-row gap-3"
+            className="mt-5 flex flex-col sm:flex-row gap-2.5 sm:gap-3"
           >
             <input
               type="text"
               value={queryId}
               onChange={(e) => setQueryId(e.target.value)}
               placeholder={t('trackInputPlaceholder')}
-              aria-label="Confidential Tracking ID"
+              aria-label="Tracking ID"
               className="flex-1 px-4 py-3.5 rounded-xl border border-stone-300 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
             />
             <button
@@ -138,27 +138,12 @@ export default function TrackOrderPage() {
               disabled={loading}
               className="px-7 py-3.5 rounded-xl bg-rose-900 hover:bg-rose-950 text-white font-bold text-sm shadow-sm transition-colors"
             >
-              {loading ? 'Searching...' : t('trackBtn')}
+              {loading ? 'Checking...' : t('trackBtn')}
             </button>
           </form>
 
-          {/* Sample Confidential Tracking Quick Button */}
-          <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-stone-500">
-            <span>Sample Verified Shipment Token:</span>
-            <button
-              type="button"
-              onClick={() => {
-                setQueryId('TRK-KC-9F4A7C2E1001');
-                lookupOrder('TRK-KC-9F4A7C2E1001');
-              }}
-              className="px-2.5 py-1 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-950 font-mono font-bold transition"
-            >
-              TRK-KC-9F4A7C2E1001
-            </button>
-          </div>
-
           {error && (
-            <div className="mt-5 p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-sm font-medium">
+            <div className="mt-4 p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs sm:text-sm font-medium">
               {error}
             </div>
           )}
@@ -166,26 +151,23 @@ export default function TrackOrderPage() {
 
         {/* Tracking Result */}
         {order && (
-          <div className="bg-white rounded-3xl border border-stone-200 p-6 sm:p-8 shadow-sm space-y-8">
+          <div className="bg-white rounded-3xl border border-stone-200 p-5 sm:p-8 shadow-sm space-y-6 sm:space-y-8">
             {/* Top Summary Banner */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-stone-200 pb-6">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-stone-200 pb-5">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-xs uppercase tracking-wider font-bold text-stone-400">
-                    Confidential Tracking ID
+                    Tracking ID
                   </span>
                   <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-xs font-extrabold">
                     {order.paymentStatus}
                   </span>
-                  <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 text-xs font-bold">
-                    ✉️ Receipt Emailed
-                  </span>
                 </div>
                 <h2
                   data-testid="tracked-id-heading"
-                  className="text-2xl sm:text-3xl font-mono font-extrabold text-rose-900 mt-1"
+                  className="text-xl sm:text-3xl font-mono font-extrabold text-rose-900 mt-1"
                 >
-                  {order.trackingId || 'AWAITING PAYMENT CONFIRMATION'}
+                  {order.trackingId}
                 </h2>
                 <p className="text-xs text-stone-500 mt-1 font-mono">
                   Order Reference: <strong>{order.orderId}</strong> • Amount:{' '}
@@ -215,18 +197,18 @@ export default function TrackOrderPage() {
 
             {/* Visual 5-Stage Progress Stepper */}
             <div>
-              <h3 className="text-xs font-extrabold uppercase tracking-wider text-stone-400 mb-4">
-                Live Fulfillment Progress (Auto-Refreshes Every 5 Seconds)
+              <h3 className="text-xs font-extrabold uppercase tracking-wider text-stone-400 mb-3">
+                Shipment Progress
               </h3>
 
-              <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-5 gap-2.5 sm:gap-3">
                 {TRACKING_STEPS.map((step, index) => {
                   const isCompleted = index <= currentStepIndex;
                   const isCurrent = index === currentStepIndex;
                   return (
                     <div
                       key={step.key}
-                      className={`p-3.5 rounded-2xl border transition-all ${
+                      className={`p-3 rounded-2xl border transition-all flex sm:block items-center justify-between gap-3 ${
                         isCurrent
                           ? 'bg-rose-900 text-white border-rose-900 shadow-md ring-2 ring-amber-400'
                           : isCompleted
@@ -234,8 +216,8 @@ export default function TrackOrderPage() {
                           : 'bg-stone-50 border-stone-200 text-stone-400'
                       }`}
                     >
-                      <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-lg">{step.icon}</span>
+                      <div className="flex items-center justify-between sm:mb-1.5 gap-2">
+                        <span className="text-base sm:text-lg">{step.icon}</span>
                         <span className="text-[10px] font-mono font-bold uppercase">
                           Step {index + 1}/5
                         </span>
@@ -247,15 +229,15 @@ export default function TrackOrderPage() {
               </div>
             </div>
 
-            {/* Detailed Activity Timeline & Masked Customer Info */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 pt-2 border-t border-stone-200">
+            {/* Detailed Activity Timeline & Customer Info */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8 pt-2 border-t border-stone-200">
               <div className="lg:col-span-2 space-y-4">
                 <h3 className="text-sm font-bold text-stone-900">
                   📦 {t('trackingTimelineTitle')}
                 </h3>
 
                 {order.trackingHistory && order.trackingHistory.length > 0 ? (
-                  <ol className="relative border-l-2 border-rose-200 ml-3 space-y-5">
+                  <ol className="relative border-l-2 border-rose-200 ml-3 space-y-4">
                     {[...order.trackingHistory].reverse().map((ev, i) => (
                       <li key={`${ev.status}-${i}`} className="ml-5">
                         <span
@@ -289,22 +271,17 @@ export default function TrackOrderPage() {
                   </ol>
                 ) : (
                   <p className="text-xs text-stone-500">
-                    Tracking history will appear here as soon as payment is verified.
+                    Tracking updates will appear here once your order is dispatched.
                   </p>
                 )}
               </div>
 
-              {/* Delivery Destination & Ordered Items Summary (PII Masked for Privacy) */}
+              {/* Delivery Destination & Ordered Items Summary */}
               <div className="space-y-4">
-                <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 text-xs space-y-2">
-                  <div className="flex items-center justify-between">
-                    <h4 className="font-extrabold uppercase tracking-wider text-stone-400">
-                      Delivery Destination
-                    </h4>
-                    <span className="px-2 py-0.5 rounded bg-stone-200 text-stone-700 text-[10px] font-bold">
-                      PII Masked
-                    </span>
-                  </div>
+                <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 text-xs space-y-1.5">
+                  <h4 className="font-extrabold uppercase tracking-wider text-stone-400">
+                    Delivery Destination
+                  </h4>
                   <p className="font-bold text-stone-900 text-sm">{order.customerName}</p>
                   <p className="text-stone-600 leading-relaxed">{order.address}</p>
                   <p className="text-stone-500 font-mono">Phone: {order.phone}</p>

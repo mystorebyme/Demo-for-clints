@@ -59,7 +59,7 @@ function DynamicQrSvg({ value }: { value: string }) {
   return (
     <svg
       viewBox={`0 0 ${size + 4} ${size + 4}`}
-      className="w-56 h-56 mx-auto rounded-lg bg-white"
+      className="w-52 h-52 sm:w-56 sm:h-56 mx-auto rounded-xl bg-white shadow-sm"
       role="img"
       aria-label="UPI QR Code"
     >
@@ -91,6 +91,7 @@ type OrderDetail = {
   amountPaise: number;
   status: string;
   qrPayload: string;
+  qrExpiresAt?: string;
   paymentId?: string | null;
   trackingId?: string | null;
   fulfillmentStatus?: string;
@@ -141,6 +142,7 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
   const { clearCart, t } = useStore();
 
   const [order, setOrder] = useState<OrderDetail | null>(null);
+  const [secondsLeft, setSecondsLeft] = useState<number>(240);
   const [message, setMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [copiedTracking, setCopiedTracking] = useState(false);
@@ -166,13 +168,26 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
 
   useEffect(() => {
     fetchOrder();
-    const interval = setInterval(fetchOrder, 3500);
+    const interval = setInterval(fetchOrder, 3000);
     return () => clearInterval(interval);
   }, [fetchOrder]);
 
+  // 4-Minute (240-Second) Dedicated QR Session Countdown Timer
+  useEffect(() => {
+    if (!order?.qrExpiresAt || isConfirmed) return;
+    const updateClock = () => {
+      const expMs = new Date(order.qrExpiresAt!).getTime();
+      const diffSec = Math.max(0, Math.floor((expMs - Date.now()) / 1000));
+      setSecondsLeft(diffSec);
+    };
+    updateClock();
+    const timer = setInterval(updateClock, 1000);
+    return () => clearInterval(timer);
+  }, [order?.qrExpiresAt, isConfirmed]);
+
   async function verifyInstantUpi() {
     setSubmitting(true);
-    setMessage('Verifying UPI transaction & sending Order Receipt + Tracking ID to your email...');
+    setMessage('Verifying UPI payment & emailing your GST Tax Invoice + Tracking ID...');
     try {
       await fetch('/api/dev/mock-pay', {
         method: 'POST',
@@ -180,9 +195,9 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
         body: JSON.stringify({ orderId }),
       });
       await fetchOrder();
-      setMessage('Payment confirmed! GST Receipt & Confidential Tracking ID emailed.');
+      setMessage('Payment verified! Your GST Invoice & Tracking ID have been emailed.');
     } catch {
-      setMessage('Could not verify payment automatically.');
+      setMessage('Please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -199,7 +214,7 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
       const data = await res.json();
       if (data.success) {
         await fetchOrder();
-        setMessage(`Order receipt & Tracking ID re-sent to ${data.emailSentTo || 'your email'}`);
+        setMessage(`Receipt & Tracking ID sent to ${data.emailSentTo || 'your email'}`);
       }
     } catch {
       // ignore
@@ -219,18 +234,21 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
     ? TRACKING_STEPS.findIndex((s) => s.key === order.fulfillmentStatus)
     : 0;
 
+  const mins = String(Math.floor(secondsLeft / 60)).padStart(2, '0');
+  const secs = String(secondsLeft % 60).padStart(2, '0');
+
   return (
-    <div className="min-h-screen flex flex-col bg-stone-50">
+    <div className="min-h-screen flex flex-col bg-[#faf7f2]">
       <Header />
 
-      <main className="flex-1 max-w-3xl mx-auto w-full px-4 sm:px-6 py-8 sm:py-12">
-        <div className="bg-white rounded-3xl border border-stone-200 p-6 sm:p-8 shadow-sm">
+      <main className="flex-1 max-w-3xl mx-auto w-full px-3 sm:px-6 py-6 sm:py-12">
+        <div className="bg-white rounded-3xl border border-stone-200 p-5 sm:p-8 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-200 pb-4 mb-6">
             <div>
-              <span className="text-xs uppercase tracking-wider font-bold text-stone-400">
+              <span className="text-[11px] uppercase tracking-wider font-bold text-stone-400">
                 Order Reference
               </span>
-              <h1 className="text-xl sm:text-2xl font-extrabold text-stone-900 font-mono">
+              <h1 className="text-lg sm:text-2xl font-extrabold text-stone-900 font-mono">
                 {orderId}
               </h1>
               {order?.invoiceNumber && (
@@ -243,18 +261,18 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
             <div className="flex items-center gap-2">
               <Link
                 href={`/order/${orderId}/invoice`}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-amber-100 hover:bg-amber-200 text-amber-950 border border-amber-300 text-xs font-extrabold transition"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-100 hover:bg-amber-200 text-amber-950 border border-amber-300 text-xs font-extrabold transition"
               >
                 📄 {t('downloadInvoice')}
               </Link>
               <span
-                className={`px-3.5 py-1.5 rounded-full text-xs font-extrabold uppercase tracking-wider ${
+                className={`px-3 py-1.5 rounded-full text-xs font-extrabold uppercase tracking-wider ${
                   isConfirmed
                     ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
                     : 'bg-amber-100 text-amber-900 border border-amber-300'
                 }`}
               >
-                {order?.status || 'LOADING...'}
+                {isConfirmed ? 'CONFIRMED' : order?.status || 'PENDING'}
               </span>
             </div>
           </div>
@@ -264,19 +282,19 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
               Loading your order details...
             </div>
           ) : isConfirmed ? (
-            <div className="py-4 space-y-6">
-              <div className="text-center space-y-3">
-                <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto text-3xl font-bold">
+            <div className="py-2 sm:py-4 space-y-6">
+              <div className="text-center space-y-2.5">
+                <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto text-2xl sm:text-3xl font-bold">
                   ✓
                 </div>
-                <h2 className="text-2xl font-extrabold text-emerald-900">
+                <h2 className="text-xl sm:text-2xl font-extrabold text-emerald-900">
                   {t('paymentVerifiedTitle')}
                 </h2>
-                <p className="text-stone-600 text-sm max-w-md mx-auto">
+                <p className="text-stone-600 text-xs sm:text-sm max-w-md mx-auto">
                   {t('paymentVerifiedDesc')}
                 </p>
                 <div className="inline-block bg-stone-100 rounded-xl px-4 py-2 text-xs font-mono text-stone-700">
-                  Amount Paid: <strong>{rupees(order.amountPaise)}</strong> • Payment Ref:{' '}
+                  Amount Paid: <strong>{rupees(order.amountPaise)}</strong> • Ref:{' '}
                   <strong>{order.paymentId || 'VERIFIED'}</strong>
                 </div>
               </div>
@@ -288,14 +306,6 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
                     <span className="px-2.5 py-0.5 rounded-full bg-emerald-700 text-white text-[11px] font-extrabold uppercase tracking-wider">
                       ✉️ {t('emailReceiptSentBadge')}
                     </span>
-                    {order.emailSentAt && (
-                      <span className="text-[11px] text-emerald-800 font-mono">
-                        {new Date(order.emailSentAt).toLocaleTimeString('en-IN', {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                      </span>
-                    )}
                   </div>
                   <p className="text-xs text-emerald-950 font-medium">
                     Sent to{' '}
@@ -304,7 +314,7 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
                         order.customerEmail ||
                         'patron@zariyajaipur.in'}
                     </strong>{' '}
-                    with itemized GST Tax Invoice & confidential Tracking ID.
+                    with your GST Tax Invoice & Tracking ID.
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 shrink-0">
@@ -328,18 +338,18 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
                 </div>
               </div>
 
-              {/* Confidential Tracking ID & Live Shipment Card */}
+              {/* Tracking ID & Live Shipment Card */}
               {order.trackingId && (
-                <div className="bg-gradient-to-br from-rose-950 via-rose-900 to-amber-950 text-white rounded-3xl p-6 shadow-md space-y-5">
+                <div className="bg-gradient-to-br from-rose-950 via-rose-900 to-amber-950 text-white rounded-3xl p-5 sm:p-6 shadow-md space-y-5">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/15 pb-4">
                     <div>
                       <span className="text-[11px] uppercase tracking-widest text-amber-300 font-bold block">
-                        🔒 {t('trackingIdLabel')}
+                        📦 {t('trackingIdLabel')}
                       </span>
                       <div className="flex items-center gap-2.5 mt-1">
                         <span
                           data-testid="order-tracking-id"
-                          className="text-xl sm:text-2xl font-mono font-extrabold tracking-wider text-amber-200"
+                          className="text-lg sm:text-2xl font-mono font-extrabold tracking-wider text-amber-200"
                         >
                           {order.trackingId}
                         </span>
@@ -352,7 +362,7 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
                         </button>
                       </div>
                       <p className="text-[11px] text-rose-200/90 mt-1">
-                        Keep this Tracking ID private — only holders of this 12-hex token can look up shipment updates.
+                        Use this private Tracking ID anytime to check your live delivery status.
                       </p>
                     </div>
 
@@ -372,13 +382,13 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
                   </div>
 
                   {/* Stepper */}
-                  <div className="grid grid-cols-5 gap-1.5 pt-1">
+                  <div className="grid grid-cols-5 gap-1 pt-1">
                     {TRACKING_STEPS.map((step, index) => {
                       const done = index <= currentStepIndex;
                       return (
                         <div key={step.key} className="text-center">
                           <div
-                            className={`w-8 h-8 mx-auto rounded-full flex items-center justify-center text-xs font-bold border ${
+                            className={`w-7 h-7 sm:w-8 sm:h-8 mx-auto rounded-full flex items-center justify-center text-xs font-bold border ${
                               done
                                 ? 'bg-amber-400 text-stone-950 border-amber-300 shadow'
                                 : 'bg-white/10 text-white/50 border-white/20'
@@ -387,7 +397,7 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
                             {step.icon}
                           </div>
                           <p
-                            className={`text-[10px] sm:text-xs mt-1.5 font-semibold ${
+                            className={`text-[9px] sm:text-xs mt-1 font-semibold ${
                               done ? 'text-amber-200' : 'text-white/50'
                             }`}
                           >
@@ -400,7 +410,7 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
 
                   <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-white/15">
                     <p className="text-xs text-rose-100/90">
-                      Current Milestone:{' '}
+                      Status:{' '}
                       <strong className="text-amber-300">
                         {order.trackingHistory?.[order.trackingHistory.length - 1]?.title ||
                           'Order Confirmed'}
@@ -409,7 +419,7 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
                     <div className="flex flex-wrap items-center gap-2">
                       <Link
                         href={`/order/${order.orderId}/invoice`}
-                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white/15 hover:bg-white/25 text-white font-bold text-xs transition"
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/15 hover:bg-white/25 text-white font-bold text-xs transition"
                       >
                         📄 GST Invoice PDF
                       </Link>
@@ -427,19 +437,19 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
               <div className="pt-2 flex flex-wrap justify-center gap-3">
                 <Link
                   href={`/track?id=${encodeURIComponent(order.trackingId || order.orderId)}`}
-                  className="px-6 py-3 rounded-xl bg-rose-900 hover:bg-rose-950 text-white font-semibold text-sm"
+                  className="px-5 py-3 rounded-xl bg-rose-900 hover:bg-rose-950 text-white font-semibold text-xs sm:text-sm"
                 >
-                  📦 Track Shipment Status
+                  📦 Track Shipment
                 </Link>
                 <Link
                   href={`/order/${order.orderId}/invoice`}
-                  className="px-6 py-3 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-950 border border-amber-300 font-bold text-sm"
+                  className="px-5 py-3 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-950 border border-amber-300 font-bold text-xs sm:text-sm"
                 >
-                  🖨️ Print Official GST Invoice
+                  🖨️ Download GST Invoice
                 </Link>
                 <Link
                   href="/"
-                  className="px-6 py-3 rounded-xl bg-stone-200 hover:bg-stone-300 text-stone-800 font-semibold text-sm"
+                  className="px-5 py-3 rounded-xl bg-stone-200 hover:bg-stone-300 text-stone-800 font-semibold text-xs sm:text-sm"
                 >
                   {t('continueShopping')}
                 </Link>
@@ -448,7 +458,7 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
           ) : (
             <div className="space-y-6">
               <div className="text-center">
-                <p className="text-sm text-stone-600 mb-1">{t('totalPayable')}</p>
+                <p className="text-xs sm:text-sm text-stone-600 mb-1">{t('totalPayable')}</p>
                 <p className="text-3xl font-extrabold text-rose-900">
                   {rupees(order.amountPaise)}
                 </p>
@@ -459,32 +469,40 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
                 ) : null}
               </div>
 
-              <div className="flex flex-col items-center justify-center p-6 rounded-2xl bg-stone-50 border border-stone-200">
+              {/* Dedicated 4-Minute (240-Second) QR Session Timer + Dynamic QR */}
+              <div className="flex flex-col items-center justify-center p-5 sm:p-6 rounded-2xl bg-stone-50 border border-stone-200 space-y-3">
+                <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-rose-950 text-amber-300 text-xs font-mono font-extrabold shadow-sm">
+                  <span>⏱️ Session Active:</span>
+                  <span>
+                    {mins}:{secs}
+                  </span>
+                </div>
+
                 <DynamicQrSvg value={order.qrPayload} />
-                <p className="text-xs text-stone-500 mt-2">{t('scanWithAnyUpiApp')}</p>
+                <p className="text-xs text-stone-500">{t('scanWithAnyUpiApp')}</p>
                 <a
                   href={order.qrPayload}
-                  className="mt-4 inline-flex items-center justify-center px-6 py-3 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-sm shadow-sm"
+                  className="w-full sm:w-auto text-center inline-flex items-center justify-center px-6 py-3.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-sm shadow-sm"
                 >
                   {t('openUpiApp')}
                 </a>
               </div>
 
-              {/* 1-Click Instant Verification for Store Presentation */}
+              {/* 1-Tap UPI Payment Verification */}
               <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 flex flex-col sm:flex-row items-center justify-between gap-3">
                 <div className="text-xs text-amber-950">
-                  <strong>Instant UPI Confirmation:</strong> Confirm payment immediately to generate your confidential Tracking ID & dispatch the email receipt.
+                  <strong>Completed your UPI payment?</strong> Tap below to verify payment instantly and receive your GST Invoice & Tracking ID on email.
                 </div>
                 <button
                   type="button"
                   disabled={submitting}
                   onClick={verifyInstantUpi}
-                  className="shrink-0 px-4 py-2.5 rounded-xl bg-amber-900 hover:bg-stone-900 text-white text-xs font-bold transition-colors"
+                  className="w-full sm:w-auto shrink-0 px-4 py-2.5 rounded-xl bg-rose-900 hover:bg-rose-950 text-white text-xs font-bold transition-colors"
                 >
-                  ⚡ Confirm Payment & Send Email Receipt
+                  ✓ Verify Payment & Get Tracking ID
                 </button>
               </div>
-              {message && <p className="text-xs font-semibold text-rose-800">{message}</p>}
+              {message && <p className="text-xs font-semibold text-rose-800 text-center">{message}</p>}
             </div>
           )}
         </div>
@@ -493,19 +511,21 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
       {/* HTML Email Receipt Preview Modal */}
       {showEmailModal && order?.emailReceipt?.html_preview && (
         <div
-          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4"
           onClick={() => setShowEmailModal(false)}
         >
           <div
             className="bg-white rounded-3xl max-w-2xl w-full max-h-[88vh] flex flex-col overflow-hidden shadow-2xl border border-stone-200"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="px-6 py-4 bg-stone-900 text-white flex items-center justify-between">
+            <div className="px-5 py-4 bg-stone-900 text-white flex items-center justify-between">
               <div>
                 <span className="text-[10px] uppercase tracking-widest text-amber-300 font-bold block">
-                  Dispatched Customer Email Receipt
+                  Order Confirmation Email
                 </span>
-                <h3 className="text-sm font-bold truncate">{order.emailReceipt.subject}</h3>
+                <h3 className="text-xs sm:text-sm font-bold truncate">
+                  {order.emailReceipt.subject}
+                </h3>
               </div>
               <button
                 type="button"
@@ -515,18 +535,18 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
                 ✕ Close
               </button>
             </div>
-            <div className="px-6 py-2.5 bg-stone-100 border-b border-stone-200 text-xs text-stone-600 flex flex-wrap justify-between gap-2">
+            <div className="px-5 py-2.5 bg-stone-100 border-b border-stone-200 text-xs text-stone-600 flex flex-wrap justify-between gap-2">
               <span>
-                <strong>To:</strong> {order.emailReceipt.to_email}
+                <strong>Sent To:</strong> {order.emailReceipt.to_email}
               </span>
               <span>
-                <strong>Tracking ID Included:</strong>{' '}
+                <strong>Tracking ID:</strong>{' '}
                 <code className="font-mono font-bold text-rose-900">
                   {order.emailReceipt.tracking_id}
                 </code>
               </span>
             </div>
-            <div className="p-4 overflow-y-auto flex-1 bg-stone-50">
+            <div className="p-3 sm:p-4 overflow-y-auto flex-1 bg-stone-50">
               <div
                 className="bg-white rounded-xl shadow-sm overflow-hidden"
                 dangerouslySetInnerHTML={{ __html: order.emailReceipt.html_preview }}

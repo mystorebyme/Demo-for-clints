@@ -46,10 +46,10 @@ export default function ProductCard({
   return (
     <article
       data-testid={`product-card-${p.id}`}
-      className="group bg-white rounded-3xl border border-stone-200/90 overflow-hidden shadow-sm hover:shadow-xl transition-all duration-500 flex flex-col"
+      className="group bg-white rounded-2xl sm:rounded-3xl border border-stone-200/90 overflow-hidden shadow-sm hover:shadow-xl transition-all duration-500 flex flex-col"
     >
-      {/* Image Frame with Parka-style Dual-Image Hover Crossfade */}
-      <div className="relative aspect-[4/5] bg-stone-100 overflow-hidden">
+      {/* Studio Image Frame with Dual-Image Hover Crossfade */}
+      <div className="relative aspect-[3/4] sm:aspect-[4/5] bg-stone-100 overflow-hidden">
         <Link href={`/products/${p.id}`} className="block w-full h-full relative">
           <img
             src={p.image_url}
@@ -62,7 +62,7 @@ export default function ProductCard({
           {p.hover_image_url && (
             <img
               src={p.hover_image_url}
-              alt={`${displayName} alternate view`}
+              alt={`${displayName} detail view`}
               loading="lazy"
               className="absolute inset-0 w-full h-full object-cover opacity-0 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700"
             />
@@ -71,14 +71,14 @@ export default function ProductCard({
         </Link>
 
         {/* Top Left Badges */}
-        <div className="absolute top-3.5 left-3.5 flex flex-col gap-1.5 z-10">
+        <div className="absolute top-2 left-2 sm:top-3.5 sm:left-3.5 flex flex-col gap-1 z-10">
           {displayBadge && (
-            <span className="px-3 py-1 rounded-full text-[10px] uppercase tracking-widest font-extrabold bg-rose-950/90 text-amber-200 backdrop-blur-sm shadow-sm">
+            <span className="px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[9px] sm:text-[10px] uppercase tracking-wider font-extrabold bg-rose-950/90 text-amber-200 backdrop-blur-sm shadow-sm">
               {displayBadge}
             </span>
           )}
           {discountPct > 0 && (
-            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-amber-400 text-stone-950 shadow-sm w-fit">
+            <span className="px-2 py-0.5 rounded-full text-[9px] sm:text-[11px] font-extrabold bg-amber-400 text-stone-950 shadow-sm w-fit">
               {discountPct}% OFF
             </span>
           )}
@@ -89,7 +89,7 @@ export default function ProductCard({
           type="button"
           onClick={() => toggleWishlist(p.id)}
           aria-label={isWishlisted ? 'Remove from Wishlist' : 'Add to Wishlist'}
-          className={`absolute top-3.5 right-3.5 z-10 w-9 h-9 rounded-full flex items-center justify-center shadow-md transition-transform active:scale-90 ${
+          className={`absolute top-2 right-2 sm:top-3.5 sm:right-3.5 z-10 w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center shadow-md transition-transform active:scale-90 ${
             isWishlisted
               ? 'bg-rose-600 text-white'
               : 'bg-white/90 hover:bg-white text-stone-700 hover:text-rose-600 backdrop-blur-sm'
@@ -98,64 +98,56 @@ export default function ProductCard({
           {isWishlisted ? '♥' : '♡'}
         </button>
 
-        {/* Stock Status Pill */}
-        <div className="absolute bottom-3 left-3 right-3 z-10 flex items-center justify-between gap-2">
+        {/* Rating + Stock Pill */}
+        <div className="absolute bottom-2 left-2 right-2 sm:bottom-3 sm:left-3 sm:right-3 z-10 flex items-center justify-between gap-1">
+          <span className="px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold bg-white/95 text-stone-900 shadow-sm">
+            ★ {p.rating.toFixed(1)} <span className="text-stone-400 font-normal">({p.reviews_count})</span>
+          </span>
           {isOutOfStock ? (
-            <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-stone-900/90 text-white">
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-stone-900/90 text-white">
               {t('outOfStock')}
             </span>
           ) : isLowStock ? (
-            <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-600/95 text-white">
-              {t('lowStock', { count: p.stock })}
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-600/95 text-white">
+              Only {p.stock} left
             </span>
-          ) : (
-            <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold bg-white/90 text-emerald-900 backdrop-blur-sm shadow-sm">
-              ● {t('inStock', { count: p.stock })}
-            </span>
-          )}
+          ) : null}
         </div>
       </div>
 
-      {/* Editorial Product Info */}
-      <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between gap-3">
+      {/* Product Info (Compact on Mobile, Spacious on Desktop) */}
+      <div className="p-2.5 sm:p-5 flex-1 flex flex-col justify-between gap-2 sm:gap-3">
         <div>
-          <div className="flex items-center justify-between text-xs text-stone-500 mb-1.5">
-            <span className="uppercase tracking-widest text-[10px] font-extrabold text-rose-900">
+          <div className="flex items-center justify-between text-[10px] text-stone-500 mb-0.5 sm:mb-1">
+            <span className="uppercase tracking-widest font-extrabold text-rose-900 truncate">
               {p.category === 'kurti'
                 ? t('categoryKurti')
                 : p.category === 'bag'
                 ? t('categoryBag')
                 : t('categoryAccessory')}
             </span>
-            <span className="inline-flex items-center gap-1 font-bold text-amber-700">
-              ★ {p.rating.toFixed(1)}{' '}
-              <span className="text-stone-400 font-normal">({p.reviews_count})</span>
-            </span>
           </div>
 
           <Link
             href={`/products/${p.id}`}
-            className="block font-serif font-bold text-stone-900 text-base sm:text-lg hover:text-rose-900 transition-colors line-clamp-1"
+            className="block font-serif font-bold text-stone-900 text-xs sm:text-base hover:text-rose-900 transition-colors line-clamp-1"
           >
             {displayName}
           </Link>
 
-          <p className="text-xs text-stone-500 mt-1 line-clamp-2 leading-relaxed">
+          <p className="hidden sm:line-clamp-2 text-xs text-stone-500 mt-1 leading-relaxed">
             {displayDesc}
           </p>
 
           {/* Quick Size Selector Pills */}
           {p.sizes && p.sizes.length > 1 && (
-            <div className="flex flex-wrap items-center gap-1 mt-2.5">
-              <span className="text-[10px] uppercase tracking-wider text-stone-400 font-bold mr-1">
-                Size:
-              </span>
+            <div className="flex flex-wrap items-center gap-1 mt-1.5 sm:mt-2.5">
               {p.sizes.map((sz) => (
                 <button
                   key={sz}
                   type="button"
                   onClick={() => setSelectedSize(sz)}
-                  className={`px-2 py-0.5 rounded text-[10px] font-bold border transition ${
+                  className={`px-1.5 sm:px-2 py-0.5 rounded text-[9px] sm:text-[10px] font-bold border transition ${
                     selectedSize === sz
                       ? 'bg-stone-900 text-white border-stone-900'
                       : 'bg-stone-50 text-stone-600 border-stone-200 hover:border-stone-400'
@@ -168,14 +160,14 @@ export default function ProductCard({
           )}
         </div>
 
-        <div className="pt-3 border-t border-stone-100">
-          <div className="flex items-baseline justify-between mb-3">
-            <div className="flex items-baseline gap-2">
-              <span className="text-lg sm:text-xl font-extrabold text-stone-900">
+        <div className="pt-2 sm:pt-3 border-t border-stone-100">
+          <div className="flex items-baseline justify-between mb-2 sm:mb-3">
+            <div className="flex items-baseline gap-1.5 flex-wrap">
+              <span className="text-sm sm:text-xl font-extrabold text-stone-900">
                 {rupees(p.price_paise)}
               </span>
               {p.original_price_paise && p.original_price_paise > p.price_paise && (
-                <span className="text-xs text-stone-400 line-through">
+                <span className="text-[10px] sm:text-xs text-stone-400 line-through">
                   {rupees(p.original_price_paise)}
                 </span>
               )}
@@ -185,17 +177,17 @@ export default function ProductCard({
               target="_blank"
               rel="noopener noreferrer"
               title={t('shareOnWhatsApp')}
-              className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded-lg transition"
+              className="hidden sm:inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-2 py-0.5 rounded-lg transition"
             >
               <span>💬</span>
-              <span>WhatsApp</span>
+              <span>Share</span>
             </a>
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 sm:gap-2">
             <Link
               href={`/products/${p.id}`}
-              className="text-center py-2.5 px-3 rounded-xl border border-stone-300 text-stone-800 hover:bg-stone-100 text-xs font-bold transition-colors"
+              className="hidden sm:block text-center py-2.5 px-3 rounded-xl border border-stone-300 text-stone-800 hover:bg-stone-100 text-xs font-bold transition-colors"
             >
               {t('viewDetails')}
             </Link>
@@ -203,7 +195,7 @@ export default function ProductCard({
               type="button"
               disabled={isOutOfStock}
               onClick={handleQuickAdd}
-              className={`py-2.5 px-3 rounded-xl text-xs font-extrabold transition-colors shadow-sm ${
+              className={`w-full py-2 sm:py-2.5 px-2.5 sm:px-3 rounded-xl text-[11px] sm:text-xs font-extrabold transition-colors shadow-sm ${
                 isOutOfStock
                   ? 'bg-stone-200 text-stone-400 cursor-not-allowed'
                   : justAdded
@@ -215,7 +207,7 @@ export default function ProductCard({
                 ? t('outOfStock')
                 : justAdded
                 ? `✓ ${t('addedToCart')}`
-                : t('addToCart')}
+                : `+ ${t('addToCart')}`}
             </button>
           </div>
         </div>

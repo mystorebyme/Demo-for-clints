@@ -35,8 +35,8 @@ export default function Footer() {
               </Link>
             </li>
             <li>
-              <Link href="/cart" className="hover:text-brand">
-                {t('cart')}
+              <Link href="/track" className="font-semibold text-brand hover:underline">
+                📦 {t('navTrack')}
               </Link>
             </li>
             <li>
@@ -55,7 +55,7 @@ export default function Footer() {
               🔒 HMAC Webhook Verified
             </span>
             <span className="text-[11px] bg-pink-50 text-brand border border-pink-200 px-2.5 py-0.5 rounded-full font-medium">
-              ⚡ 240s Atomic QR Lock
+              📦 Live Shipment Tracking
             </span>
           </div>
         </div>

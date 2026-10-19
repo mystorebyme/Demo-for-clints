@@ -1,10 +1,21 @@
+const crypto = require('crypto');
 const { pool } = require('../config/db');
 const { redis } = require('../config/redis');
 const { emitToOrder } = require('./socket');
 const { notifyOrderConfirmed } = require('./telegram');
 
+function generateTrackingId() {
+  return `TRK-KC-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+}
+
+function getDefaultEstimatedDelivery() {
+  const dt = new Date(Date.now() + 4 * 24 * 60 * 60 * 1000);
+  return dt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
 // Single place where an order becomes CONFIRMED. Called only from the verified webhook
 // (or the dev-only mock endpoint). Idempotent: replays and duplicates are ignored.
+// Automatically generates a unique customer Tracking ID (TRK-KC-XXXXXX) on confirmation.
 async function confirmOrder(gatewayOrderId, payment) {
   const lockKey = `lock:confirm:${gatewayOrderId}`;
   const gotLock = await redis.set(lockKey, '1', 'EX', 30, 'NX');
@@ -12,6 +23,7 @@ async function confirmOrder(gatewayOrderId, payment) {
 
   const client = await pool.connect();
   let order;
+  let trackingId;
   try {
     await client.query('BEGIN');
     const { rows } = await client.query('SELECT * FROM orders WHERE gateway_order_id = $1 FOR UPDATE', [gatewayOrderId]);
@@ -22,7 +34,11 @@ async function confirmOrder(gatewayOrderId, payment) {
     }
     if (order.status === 'CONFIRMED') {
       await client.query('ROLLBACK');
-      return { result: 'already_confirmed' };
+      return {
+        result: 'already_confirmed',
+        orderId: order.order_id,
+        trackingId: order.tracking_id,
+      };
     }
     if (Number(payment.amount) !== order.amount_paise) {
       await client.query("UPDATE orders SET status = 'FAILED' WHERE id = $1", [order.id]);
@@ -39,7 +55,25 @@ async function confirmOrder(gatewayOrderId, payment) {
       await client.query('ROLLBACK');
       return { result: 'duplicate_payment' };
     }
-    await client.query("UPDATE orders SET status = 'CONFIRMED', confirmed_at = NOW() WHERE id = $1", [order.id]);
+
+    trackingId = order.tracking_id || generateTrackingId();
+    const courierName = order.courier_name || 'Delhivery Express';
+    const estimatedDelivery = order.estimated_delivery || getDefaultEstimatedDelivery();
+    const initialHistory = [
+      {
+        status: 'ORDER_PLACED',
+        title: 'Order Confirmed & Payment Verified',
+        location: 'Jaipur Warehouse, Rajasthan',
+        note: `Payment verified. Tracking ID ${trackingId} generated.`,
+        timestamp: new Date().toISOString(),
+      },
+    ];
+
+    await client.query(
+      `UPDATE orders SET status = 'CONFIRMED', confirmed_at = NOW(), tracking_id = $2, courier_name = $3, fulfillment_status = $4, estimated_delivery = $5, tracking_history = $6 WHERE id = $1`,
+      [order.id, trackingId, courierName, 'ORDER_PLACED', estimatedDelivery, JSON.stringify(initialHistory)]
+    );
+
     for (const item of order.items) {
       await client.query('UPDATE products SET stock = GREATEST(stock - $1, 0) WHERE id = $2', [item.qty, item.id]);
     }
@@ -52,9 +86,14 @@ async function confirmOrder(gatewayOrderId, payment) {
     await redis.del(lockKey).catch(() => {});
   }
 
-  emitToOrder(order.order_id, 'payment_confirmed', { orderId: order.order_id, status: 'CONFIRMED' });
+  order.tracking_id = trackingId;
+  emitToOrder(order.order_id, 'payment_confirmed', {
+    orderId: order.order_id,
+    status: 'CONFIRMED',
+    trackingId,
+  });
   notifyOrderConfirmed(order, payment).catch((e) => console.error('[notify]', e.message));
-  return { result: 'confirmed', orderId: order.order_id };
+  return { result: 'confirmed', orderId: order.order_id, trackingId };
 }
 
 async function expireOldOrders(minutes) {
@@ -68,4 +107,4 @@ async function expireOldOrders(minutes) {
   return rows.length;
 }
 
-module.exports = { confirmOrder, expireOldOrders };
+module.exports = { confirmOrder, expireOldOrders, generateTrackingId };

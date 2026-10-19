@@ -79,7 +79,6 @@ async function createOrder(req, reply) {
     ? String(req.headers['x-idempotency-key']).slice(0, 120)
     : null;
 
-  // 1. Check 4-Tier Fallback State
   const currentTier = await getCurrentTier();
   if (currentTier === 4) {
     return reply.code(503).send({
@@ -89,7 +88,6 @@ async function createOrder(req, reply) {
     });
   }
 
-  // 2. Check Idempotency Key to prevent duplicate order creation
   if (idempotencyKey) {
     const { rows: existingRows } = await pool.query(
       'SELECT * FROM orders WHERE idempotency_key = $1',
@@ -114,14 +112,12 @@ async function createOrder(req, reply) {
     }
   }
 
-  // 3. Merge duplicate product IDs and validate quantities
   const qtyById = new Map();
   for (const it of items) {
     qtyById.set(it.id, (qtyById.get(it.id) || 0) + it.qty);
   }
   const ids = [...qtyById.keys()];
 
-  // 4. Authoritative price calculation from database (never trust client price)
   const { rows: products } = await pool.query(
     'SELECT id, name, name_hi, price_paise, stock FROM products WHERE id = ANY($1::int[])',
     [ids]
@@ -143,7 +139,6 @@ async function createOrder(req, reply) {
 
   const orderId = `ORD${crypto.randomBytes(8).toString('hex').toUpperCase()}`;
 
-  // 5. Acquire 240-second (4-minute) Redis session lock for this order
   const sessionLockKey = `lock:qr_session:${orderId}`;
   await redis.set(sessionLockKey, String(amountPaise), 'EX', env.ORDER_EXPIRY_MINUTES * 60, 'NX').catch(() => {});
 
@@ -206,7 +201,7 @@ async function createOrder(req, reply) {
 
 async function getOrderStatus(req, reply) {
   const { rows } = await pool.query(
-    'SELECT order_id, status, amount_paise, items, qr_payload, fallback_tier, created_at, expires_at, confirmed_at FROM orders WHERE order_id = $1',
+    'SELECT order_id, status, amount_paise, items, tracking_id, courier_name, fulfillment_status, estimated_delivery, tracking_history, qr_payload, fallback_tier, created_at, expires_at, confirmed_at FROM orders WHERE order_id = $1',
     [req.params.orderId]
   );
   if (!rows[0]) return reply.code(404).send({ success: false, error: 'Order not found.' });
@@ -217,10 +212,50 @@ async function getOrderStatus(req, reply) {
     status: o.status,
     amountPaise: o.amount_paise,
     items: o.items,
+    trackingId: o.tracking_id || null,
+    courierName: o.courier_name || 'Delhivery Express',
+    fulfillmentStatus: o.fulfillment_status || 'PENDING_PAYMENT',
+    estimatedDelivery: o.estimated_delivery || null,
+    trackingHistory: o.tracking_history || [],
     qrPayload: o.qr_payload,
     fallbackTier: o.fallback_tier || 1,
     createdAt: o.created_at,
     expiresAt: o.expires_at,
+    confirmedAt: o.confirmed_at,
+  };
+}
+
+// Public Tracking Lookup by either Tracking ID (TRK-KC-...) or Order ID (ORD...)
+async function trackOrder(req, reply) {
+  const rawId = String(req.params.id || '').trim();
+  if (!rawId || rawId.length < 4) {
+    return reply.code(400).send({ success: false, error: 'Please provide a valid Tracking ID or Order ID.' });
+  }
+  const { rows } = await pool.query(
+    'SELECT * FROM orders WHERE UPPER(order_id) = UPPER($1) OR UPPER(tracking_id) = UPPER($1)',
+    [rawId]
+  );
+  if (!rows[0]) {
+    return reply.code(404).send({
+      success: false,
+      error: 'No order found with this Tracking ID or Order ID.',
+    });
+  }
+  const o = rows[0];
+  return {
+    success: true,
+    orderId: o.order_id,
+    trackingId: o.tracking_id || null,
+    paymentStatus: o.status,
+    fulfillmentStatus: o.fulfillment_status || (o.status === 'CONFIRMED' ? 'ORDER_PLACED' : 'PENDING_PAYMENT'),
+    courierName: o.courier_name || 'Delhivery Express',
+    estimatedDelivery: o.estimated_delivery || null,
+    trackingHistory: o.tracking_history || [],
+    customerName: o.customer_name,
+    address: o.address,
+    amountPaise: o.amount_paise,
+    items: o.items || [],
+    createdAt: o.created_at,
     confirmedAt: o.confirmed_at,
   };
 }
@@ -238,4 +273,4 @@ async function mockPay(req, reply) {
   return { success: true, ...result };
 }
 
-module.exports = { listProducts, getProductById, validateCart, createOrder, getOrderStatus, mockPay };
+module.exports = { listProducts, getProductById, validateCart, createOrder, getOrderStatus, trackOrder, mockPay };

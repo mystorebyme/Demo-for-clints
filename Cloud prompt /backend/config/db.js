@@ -16,11 +16,60 @@ const INITIAL_PRODUCTS = [
   { id: 12, name: 'Pearl & Mirror Work Hair Clip Set', name_hi: 'पर्ल और मिरर वर्क हेयर क्लिप सेट', category: 'accessory', price_paise: 24900, image_url: '/products/acc4.svg', stock: 0 },
 ];
 
+const DEMO_TRACKED_ORDER = {
+  id: 1,
+  order_id: 'ORDDEMO1001',
+  user_id: 1,
+  customer_name: 'Aditi Sharma (Demo Order)',
+  phone: '9876543210',
+  address: 'B-24, Bapu Nagar, Jaipur, Rajasthan, PIN: 302015',
+  amount_paise: 209800,
+  items: [
+    { id: 1, name: 'Cotton Straight Kurti', name_hi: 'कॉटन स्ट्रेट कुर्ती', size: 'M', qty: 1, price_paise: 79900 },
+    { id: 2, name: 'Anarkali Printed Kurti', name_hi: 'अनारकली प्रिंटेड कुर्ती', size: 'L', qty: 1, price_paise: 129900 },
+  ],
+  status: 'CONFIRMED',
+  tracking_id: 'TRK-KC-1001',
+  courier_name: 'Delhivery Express',
+  fulfillment_status: 'SHIPPED',
+  estimated_delivery: '22 Oct 2026',
+  tracking_history: [
+    {
+      status: 'ORDER_PLACED',
+      title: 'Order Confirmed & Payment Verified',
+      location: 'Jaipur Warehouse, RJ',
+      note: 'Server webhook verified payment. Tracking ID TRK-KC-1001 generated.',
+      timestamp: '2026-10-18T10:15:00.000Z',
+    },
+    {
+      status: 'PACKED',
+      title: 'Order Packed & Quality Checked',
+      location: 'Sitapura Dispatch Center, Jaipur',
+      note: '2 items packed in tamper-evident courier bag.',
+      timestamp: '2026-10-18T15:40:00.000Z',
+    },
+    {
+      status: 'SHIPPED',
+      title: 'Dispatched via Delhivery Express',
+      location: 'Jaipur Regional Sorting Hub',
+      note: 'Handed over to courier partner (AWB: TRK-KC-1001). In transit to destination.',
+      timestamp: '2026-10-19T05:30:00.000Z',
+    },
+  ],
+  gateway_order_id: 'order_mock_ORDDEMO1001',
+  qr_payload: 'upi://pay?pa=kurticorner.demo@upi&pn=Kurti%20Corner&tr=ORDDEMO1001&am=2098.00&cu=INR',
+  idempotency_key: 'demo_seed_1001',
+  fallback_tier: 1,
+  created_at: '2026-10-18T10:12:00.000Z',
+  expires_at: '2026-10-18T10:16:00.000Z',
+  confirmed_at: '2026-10-18T10:15:00.000Z',
+};
+
 function createInMemoryPool() {
   const state = {
-    users: [],
+    users: [{ id: 1, phone: '9876543210', name: 'Aditi Sharma (Demo Order)' }],
     products: INITIAL_PRODUCTS.map((p) => ({ ...p })),
-    orders: [],
+    orders: [JSON.parse(JSON.stringify(DEMO_TRACKED_ORDER))],
     payments: [],
     paymentEvents: new Set(),
     settings: new Map([
@@ -117,6 +166,11 @@ function createInMemoryPool() {
         amount_paise: Number(amount_paise),
         items: typeof itemsJson === 'string' ? JSON.parse(itemsJson) : itemsJson,
         status: 'PENDING',
+        tracking_id: null,
+        courier_name: 'Delhivery Express',
+        fulfillment_status: 'PENDING_PAYMENT',
+        estimated_delivery: null,
+        tracking_history: [],
         gateway_order_id,
         qr_payload: qr_payload || null,
         idempotency_key: idempotency_key || null,
@@ -127,6 +181,16 @@ function createInMemoryPool() {
       };
       state.orders.push(rec);
       return { rows: [rec], rowCount: 1 };
+    }
+
+    if (norm.includes('WHERE UPPER(order_id) = UPPER($1) OR UPPER(tracking_id) = UPPER($1)')) {
+      const needle = String(params[0] || '').trim().toUpperCase();
+      const found = state.orders.find(
+        (o) =>
+          (o.order_id && o.order_id.toUpperCase() === needle) ||
+          (o.tracking_id && o.tracking_id.toUpperCase() === needle)
+      );
+      return { rows: found ? [found] : [], rowCount: found ? 1 : 0 };
     }
 
     if (norm.includes('FROM orders WHERE order_id = $1')) {
@@ -146,12 +210,34 @@ function createInMemoryPool() {
     }
 
     if (norm.startsWith("UPDATE orders SET status = 'CONFIRMED'")) {
-      const found = state.orders.find((o) => o.id === Number(params[0]));
+      const [id, trackingId, courierName, fulfillmentStatus, estimatedDelivery, historyJson] = params;
+      const found = state.orders.find((o) => o.id === Number(id));
       if (found) {
         found.status = 'CONFIRMED';
         found.confirmed_at = new Date().toISOString();
+        if (trackingId) found.tracking_id = trackingId;
+        if (courierName) found.courier_name = courierName;
+        if (fulfillmentStatus) found.fulfillment_status = fulfillmentStatus;
+        if (estimatedDelivery) found.estimated_delivery = estimatedDelivery;
+        if (historyJson) {
+          found.tracking_history = typeof historyJson === 'string' ? JSON.parse(historyJson) : historyJson;
+        }
       }
-      return { rows: [], rowCount: found ? 1 : 0 };
+      return { rows: found ? [found] : [], rowCount: found ? 1 : 0 };
+    }
+
+    if (norm.startsWith('UPDATE orders SET fulfillment_status =')) {
+      const [orderId, fulfillmentStatus, courierName, trackingId, estimatedDelivery, historyJson] = params;
+      const found = state.orders.find((o) => o.order_id === orderId);
+      if (!found) return { rows: [], rowCount: 0 };
+      found.fulfillment_status = fulfillmentStatus;
+      if (courierName) found.courier_name = courierName;
+      if (trackingId) found.tracking_id = trackingId;
+      if (estimatedDelivery !== undefined) found.estimated_delivery = estimatedDelivery;
+      if (historyJson) {
+        found.tracking_history = typeof historyJson === 'string' ? JSON.parse(historyJson) : historyJson;
+      }
+      return { rows: [found], rowCount: 1 };
     }
 
     if (norm.startsWith("UPDATE orders SET status = 'EXPIRED'")) {
@@ -245,4 +331,4 @@ if (process.env.USE_IN_MEMORY_STORE === '1' || env.NODE_ENV === 'test' || !env.D
   pool.on('error', (err) => console.error('[pg] idle client error', err.message));
 }
 
-module.exports = { pool, createInMemoryPool };
+module.exports = { pool, createInMemoryPool, DEMO_TRACKED_ORDER };

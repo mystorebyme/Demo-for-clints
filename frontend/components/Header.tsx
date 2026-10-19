@@ -15,7 +15,6 @@ export default function Header() {
 
   return (
     <header className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-pink-100 shadow-sm">
-      {/* Demo Storefront Transparency Notice */}
       <div
         role="region"
         aria-label="Demo Storefront Notice"
@@ -26,7 +25,6 @@ export default function Header() {
       </div>
 
       <div className="max-w-6xl mx-auto flex items-center justify-between px-4 py-3 gap-4">
-        {/* Brand Logo */}
         <div className="flex items-center gap-3">
           <button
             type="button"
@@ -59,8 +57,8 @@ export default function Header() {
           </Link>
         </div>
 
-        {/* Desktop Category Navigation */}
-        <nav aria-label="Main Navigation" className="hidden md:flex items-center gap-6 text-sm font-medium text-gray-700">
+        {/* Desktop Category & Tracking Navigation */}
+        <nav aria-label="Main Navigation" className="hidden md:flex items-center gap-5 text-sm font-medium text-gray-700">
           <Link href="/" className="hover:text-brand transition-colors">
             {t('navHome')}
           </Link>
@@ -73,12 +71,18 @@ export default function Header() {
           <Link href="/?category=accessory#catalog" className="hover:text-brand transition-colors">
             {t('navAccessories')}
           </Link>
+          <Link
+            href="/track"
+            className="inline-flex items-center gap-1 text-brand font-semibold bg-pink-50 px-3 py-1 rounded-full border border-pink-200 hover:bg-brand hover:text-white transition-colors"
+          >
+            <span>📦</span>
+            <span>{t('navTrack')}</span>
+          </Link>
           <Link href="/admin" className="text-gray-500 hover:text-brand transition-colors">
             {t('navAdmin')}
           </Link>
         </nav>
 
-        {/* Actions: Language Toggle & Cart */}
         <div className="flex items-center gap-2.5">
           <button
             type="button"
@@ -105,7 +109,6 @@ export default function Header() {
         </div>
       </div>
 
-      {/* Mobile Navigation Drawer */}
       {mobileMenuOpen && (
         <nav
           aria-label="Mobile Navigation"
@@ -134,6 +137,13 @@ export default function Header() {
             className="py-1.5 px-2 rounded hover:bg-brand-light"
           >
             💍 {t('navAccessories')}
+          </Link>
+          <Link
+            href="/track"
+            onClick={() => setMobileMenuOpen(false)}
+            className="py-1.5 px-2 rounded font-bold text-brand hover:bg-brand-light"
+          >
+            📦 {t('navTrack')}
           </Link>
           <Link
             href="/admin"

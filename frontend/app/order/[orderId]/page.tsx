@@ -15,9 +15,6 @@ type OrderItem = {
   price_paise: number;
 };
 
-/**
- * Renders a deterministic visual QR representation for the dynamic server-allocated UPI payment payload.
- */
 function DynamicQrSvg({ payload, orderId }: { payload: string; orderId: string }) {
   const cells = useMemo(() => {
     const size = 21;
@@ -50,7 +47,7 @@ function DynamicQrSvg({ payload, orderId }: { payload: string; orderId: string }
         if (inFinder) continue;
         hash ^= (r * 31 + c * 17) & 0xff;
         hash = Math.imul(hash, 16777619);
-        grid[r][c] = (Math.abs(hash) % 10) < 5;
+        grid[r][c] = Math.abs(hash) % 10 < 5;
       }
     }
     return grid;
@@ -89,6 +86,9 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
   const [status, setStatus] = useState<Status>('LOADING');
   const [amount, setAmount] = useState<number | null>(null);
   const [items, setItems] = useState<OrderItem[]>([]);
+  const [trackingId, setTrackingId] = useState<string | null>(null);
+  const [courierName, setCourierName] = useState<string>('Delhivery Express');
+  const [estimatedDelivery, setEstimatedDelivery] = useState<string | null>(null);
   const [expiresAt, setExpiresAt] = useState<string | null>(null);
   const [remainingSec, setRemainingSec] = useState<number>(240);
   const [qrPayload, setQrPayload] = useState<string>('');
@@ -96,7 +96,7 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
   const [socketConnected, setSocketConnected] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [simulating, setSimulating] = useState(false);
-  const [simResult, setSimResult] = useState<string>('');
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     const sp = new URLSearchParams(window.location.search);
@@ -115,6 +115,9 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
       setStatus(d.status);
       setAmount(d.amountPaise);
       if (Array.isArray(d.items)) setItems(d.items);
+      if (d.trackingId) setTrackingId(d.trackingId);
+      if (d.courierName) setCourierName(d.courierName);
+      if (d.estimatedDelivery) setEstimatedDelivery(d.estimatedDelivery);
       if (d.expiresAt) {
         setExpiresAt(d.expiresAt);
       } else if (d.createdAt) {
@@ -141,6 +144,7 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
     });
     socket.on('disconnect', () => setSocketConnected(false));
     socket.on('payment_confirmed', () => loadOrder());
+    socket.on('tracking_updated', () => loadOrder());
     socket.on('order_expired', () => loadOrder());
 
     const poll = setInterval(loadOrder, 3000);
@@ -151,7 +155,6 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
     };
   }, [orderId, loadOrder]);
 
-  // 240-second (4-minute) server-synchronized countdown timer
   useEffect(() => {
     if (status !== 'PENDING' || !expiresAt) return;
     const updateClock = () => {
@@ -174,7 +177,6 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
 
   async function simulate() {
     setSimulating(true);
-    setSimResult('');
     try {
       const res = await fetch(`${API_URL}/api/dev/mock-pay`, {
         method: 'POST',
@@ -182,11 +184,18 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
         body: JSON.stringify({ orderId }),
       });
       const data = await res.json();
-      setSimResult(data.result || (data.success ? 'confirmed' : 'error'));
+      if (data.trackingId) setTrackingId(data.trackingId);
       await loadOrder();
     } finally {
       setSimulating(false);
     }
+  }
+
+  function handleCopyTracking() {
+    if (!trackingId) return;
+    navigator.clipboard?.writeText(trackingId).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
   }
 
   const mins = String(Math.floor(remainingSec / 60)).padStart(2, '0');
@@ -251,7 +260,6 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
           </div>
         </div>
 
-        {/* Status Banner */}
         {status === 'LOADING' && (
           <p className="text-gray-400 animate-pulse py-6">{t('loading')}</p>
         )}
@@ -262,7 +270,6 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
               ⏳ {t('waitingPayment')}
             </div>
 
-            {/* 4-Minute Dynamic QR Session Panel */}
             <div className="bg-gray-50 rounded-2xl border border-gray-200 p-5 space-y-3">
               <p className="text-sm font-bold text-gray-900">{t('scanQrTitle')}</p>
               <DynamicQrSvg
@@ -271,7 +278,6 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
               />
               <p className="text-xs text-gray-500">{t('scanQrSubtitle')}</p>
 
-              {/* 240-Second Countdown Bar */}
               <div className="pt-2 space-y-1.5">
                 <div className="flex items-center justify-between text-xs font-bold">
                   <span className="text-gray-600">{t('sessionTimerLabel')}:</span>
@@ -291,15 +297,53 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
         )}
 
         {status === 'CONFIRMED' && (
-          <div
-            role="status"
-            className="p-5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold space-y-1"
-          >
-            <p className="text-lg">✅ {t('confirmed')}</p>
-            {simResult && (
-              <p className="text-xs font-mono text-emerald-700">
-                Verification status: {simResult}
-              </p>
+          <div className="space-y-4">
+            <div
+              role="status"
+              className="p-5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold space-y-1"
+            >
+              <p className="text-lg">✅ {t('confirmed')}</p>
+            </div>
+
+            {/* Generated Customer Tracking ID Card */}
+            {trackingId && (
+              <div className="bg-gradient-to-br from-pink-50 via-rose-50 to-amber-50 border-2 border-pink-200 rounded-2xl p-5 space-y-3 text-left shadow-sm">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wider text-brand">
+                      📦 {t('trackingIdLabel')}
+                    </p>
+                    <p className="font-mono text-xl font-extrabold text-gray-900 mt-0.5">
+                      {trackingId}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCopyTracking}
+                    className="text-xs font-bold bg-white border border-pink-200 text-brand px-3 py-1.5 rounded-xl hover:bg-brand hover:text-white transition-colors"
+                  >
+                    {copied ? t('copied') : `📋 ${t('copyTrackingId')}`}
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap gap-4 text-xs text-gray-600 pt-1">
+                  <span>
+                    <strong>{t('courierPartner')}:</strong> {courierName}
+                  </span>
+                  {estimatedDelivery && (
+                    <span>
+                      <strong>{t('estimatedDelivery')}:</strong> {estimatedDelivery}
+                    </span>
+                  )}
+                </div>
+
+                <Link
+                  href={`/track?id=${encodeURIComponent(trackingId)}`}
+                  className="block w-full text-center bg-brand text-white font-bold text-sm rounded-xl py-3 hover:bg-brand-dark transition-colors shadow-sm"
+                >
+                  🚚 {t('trackOrderCta')} ({trackingId}) →
+                </Link>
+              </div>
             )}
           </div>
         )}
@@ -316,7 +360,6 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
           </div>
         )}
 
-        {/* Sandbox / Dev Webhook Simulation Box */}
         {mock && status === 'PENDING' && (
           <div className="bg-pink-50/70 border-2 border-dashed border-brand/50 rounded-2xl p-4 space-y-2.5 text-left">
             <p className="text-xs text-gray-700 leading-relaxed">{t('sandboxNotice')}</p>
@@ -331,7 +374,6 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
           </div>
         )}
 
-        {/* Order Items Receipt */}
         {items.length > 0 && (
           <div className="border-t border-gray-100 pt-4 text-left space-y-2">
             <p className="text-xs font-bold uppercase tracking-wider text-gray-500">

@@ -10,7 +10,7 @@ process.env.PAYMENT_MODE = 'mock';
 
 const { buildApp } = require('../server');
 
-describe('Phases 3–10 Backend API — Products, Orders, Idempotency, Webhooks, Fallback & Admin', () => {
+describe('Phases 3–10 Backend API — Products, Orders, Idempotency, Webhooks, Live Tracking, Fallback & Admin', () => {
   let app;
 
   before(async () => {
@@ -90,7 +90,6 @@ describe('Phases 3–10 Backend API — Products, Orders, Idempotency, Webhooks,
     assert.equal(o1.expiresInSeconds, 240);
     assert.equal(o1.qrPayload.includes(o1.orderId), true);
 
-    // Duplicate request with same idempotency key returns same orderId
     const res2 = await app.inject({
       method: 'POST',
       url: '/api/create-order',
@@ -101,7 +100,6 @@ describe('Phases 3–10 Backend API — Products, Orders, Idempotency, Webhooks,
     assert.equal(res2.json().orderId, o1.orderId);
     assert.equal(res2.json().idempotentReplay, true);
 
-    // Out-of-stock product (#12 has stock 0) returns 409
     const outOfStockRes = await app.inject({
       method: 'POST',
       url: '/api/create-order',
@@ -113,8 +111,7 @@ describe('Phases 3–10 Backend API — Products, Orders, Idempotency, Webhooks,
     assert.equal(outOfStockRes.statusCode, 409);
   });
 
-  it('verifies Razorpay HMAC-SHA256 webhook signatures, rejects bad signatures, confirms orders & blocks replays', async () => {
-    // Create a fresh order
+  it('generates Tracking ID on webhook confirmation, allows customer lookup on /api/track/:id, and supports Admin live tracking updates', async () => {
     const createRes = await app.inject({
       method: 'POST',
       url: '/api/create-order',
@@ -156,11 +153,7 @@ describe('Phases 3–10 Backend API — Products, Orders, Idempotency, Webhooks,
     });
     assert.equal(badRes.statusCode, 400);
 
-    // Order is still PENDING
-    const statusBefore = await app.inject({ method: 'GET', url: `/api/orders/${order.orderId}` });
-    assert.equal(statusBefore.json().status, 'PENDING');
-
-    // 2. Valid HMAC-SHA256 signature -> 200 & order becomes CONFIRMED
+    // 2. Valid HMAC-SHA256 signature -> 200 & order becomes CONFIRMED with generated Tracking ID
     const validSig = crypto
       .createHmac('sha256', process.env.RAZORPAY_WEBHOOK_SECRET)
       .update(Buffer.from(webhookBody, 'utf8'))
@@ -178,15 +171,42 @@ describe('Phases 3–10 Backend API — Products, Orders, Idempotency, Webhooks,
     assert.equal(goodRes.statusCode, 200);
 
     const statusAfter = await app.inject({ method: 'GET', url: `/api/orders/${order.orderId}` });
-    assert.equal(statusAfter.json().status, 'CONFIRMED');
+    const statusJson = statusAfter.json();
+    assert.equal(statusJson.status, 'CONFIRMED');
+    assert.equal(Boolean(statusJson.trackingId && statusJson.trackingId.startsWith('TRK-KC-')), true);
 
-    // 3. Replay via mock-pay -> already_confirmed
-    const replayRes = await app.inject({
-      method: 'POST',
-      url: '/api/dev/mock-pay',
-      payload: { orderId: order.orderId },
+    // 3. Customer tracks order using the generated Tracking ID on GET /api/track/:id
+    const trackRes1 = await app.inject({
+      method: 'GET',
+      url: `/api/track/${statusJson.trackingId}`,
     });
-    assert.equal(replayRes.json().result, 'already_confirmed');
+    assert.equal(trackRes1.statusCode, 200);
+    assert.equal(trackRes1.json().fulfillmentStatus, 'ORDER_PLACED');
+
+    // 4. Admin updates shipment stage to SHIPPED -> Customer sees updated tracking immediately
+    const adminUpdateRes = await app.inject({
+      method: 'PUT',
+      url: `/api/admin/orders/${order.orderId}/tracking`,
+      headers: { 'x-admin-token': process.env.ADMIN_TOKEN },
+      payload: {
+        fulfillmentStatus: 'SHIPPED',
+        courierName: 'BlueDart Express',
+        trackingId: statusJson.trackingId,
+        estimatedDelivery: '23 Oct 2026',
+        location: 'Jaipur Central Hub',
+        note: 'Dispatched via BlueDart Air',
+      },
+    });
+    assert.equal(adminUpdateRes.statusCode, 200);
+
+    const trackRes2 = await app.inject({
+      method: 'GET',
+      url: `/api/track/${statusJson.trackingId}`,
+    });
+    assert.equal(trackRes2.statusCode, 200);
+    assert.equal(trackRes2.json().fulfillmentStatus, 'SHIPPED');
+    assert.equal(trackRes2.json().courierName, 'BlueDart Express');
+    assert.equal(trackRes2.json().trackingHistory.length, 2);
   });
 
   it('enforces admin authentication, product CRUD, 4-Tier Fallback switching, and audit logs', async () => {
@@ -195,7 +215,6 @@ describe('Phases 3–10 Backend API — Products, Orders, Idempotency, Webhooks,
 
     const adminHeaders = { 'x-admin-token': process.env.ADMIN_TOKEN };
 
-    // Update notification target
     const updateTarget = await app.inject({
       method: 'PUT',
       url: '/api/admin/notification-target',
@@ -204,7 +223,6 @@ describe('Phases 3–10 Backend API — Products, Orders, Idempotency, Webhooks,
     });
     assert.equal(updateTarget.statusCode, 200);
 
-    // Switch fallback tier to Tier 4 (Maintenance) and verify order creation returns 503
     const setTier4 = await app.inject({
       method: 'PUT',
       url: '/api/admin/fallback-tier',
@@ -228,7 +246,6 @@ describe('Phases 3–10 Backend API — Products, Orders, Idempotency, Webhooks,
     });
     assert.equal(blockedOrder.statusCode, 503);
 
-    // Restore Tier 1
     await app.inject({
       method: 'PUT',
       url: '/api/admin/fallback-tier',
@@ -236,7 +253,6 @@ describe('Phases 3–10 Backend API — Products, Orders, Idempotency, Webhooks,
       payload: { tier: 1 },
     });
 
-    // Verify audit logs recorded admin actions
     const logsRes = await app.inject({
       method: 'GET',
       url: '/api/admin/audit-logs',

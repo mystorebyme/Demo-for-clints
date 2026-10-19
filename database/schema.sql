@@ -1,5 +1,5 @@
 -- ============================================================================
--- Fashion Store Complete Schema (Synchronized with database/migrations/001_initial_schema.sql)
+-- Fashion Store Complete Schema (Synchronized with migrations 001 & 002)
 -- Non-destructive initialization for Docker entrypoint & fresh PostgreSQL instances
 -- ============================================================================
 
@@ -43,6 +43,20 @@ CREATE TABLE IF NOT EXISTS orders (
     items JSONB NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'PENDING'
         CHECK (status IN ('PENDING', 'CONFIRMING', 'CONFIRMED', 'FAILED', 'EXPIRED', 'CANCELLED', 'REFUNDED')),
+    tracking_id VARCHAR(60) UNIQUE,
+    courier_name VARCHAR(80) DEFAULT 'Delhivery Express',
+    fulfillment_status VARCHAR(30) NOT NULL DEFAULT 'PENDING_PAYMENT'
+        CHECK (fulfillment_status IN (
+          'PENDING_PAYMENT',
+          'ORDER_PLACED',
+          'PACKED',
+          'SHIPPED',
+          'OUT_FOR_DELIVERY',
+          'DELIVERED',
+          'CANCELLED'
+        )),
+    estimated_delivery VARCHAR(80),
+    tracking_history JSONB NOT NULL DEFAULT '[]'::jsonb,
     fallback_tier SMALLINT NOT NULL DEFAULT 1 CHECK (fallback_tier BETWEEN 1 AND 4),
     gateway_order_id VARCHAR(100) UNIQUE,
     qr_payload TEXT,
@@ -54,6 +68,7 @@ CREATE TABLE IF NOT EXISTS orders (
 );
 CREATE INDEX IF NOT EXISTS idx_orders_status_created ON orders(status, created_at);
 CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id);
+CREATE INDEX IF NOT EXISTS idx_orders_tracking_id ON orders(tracking_id);
 
 CREATE TABLE IF NOT EXISTS order_items (
     id SERIAL PRIMARY KEY,

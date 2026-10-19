@@ -10,6 +10,23 @@ export type OrderItemRecord = {
   price_paise: number;
 };
 
+export type FulfillmentStatus =
+  | 'PENDING_PAYMENT'
+  | 'ORDER_PLACED'
+  | 'PACKED'
+  | 'SHIPPED'
+  | 'OUT_FOR_DELIVERY'
+  | 'DELIVERED'
+  | 'CANCELLED';
+
+export type TrackingEvent = {
+  status: FulfillmentStatus;
+  title: string;
+  location: string;
+  note: string;
+  timestamp: string;
+};
+
 export type OrderRecord = {
   order_id: string;
   customer_name: string;
@@ -18,11 +35,70 @@ export type OrderRecord = {
   amount_paise: number;
   items: OrderItemRecord[];
   status: 'PENDING' | 'CONFIRMED' | 'FAILED' | 'EXPIRED';
+  tracking_id: string | null;
+  courier_name: string;
+  fulfillment_status: FulfillmentStatus;
+  estimated_delivery: string | null;
+  tracking_history: TrackingEvent[];
   gateway_order_id: string;
   created_at: string;
   expires_at: string;
   confirmed_at: string | null;
   qr_payload: string;
+};
+
+const FULFILLMENT_TITLES: Record<string, string> = {
+  ORDER_PLACED: 'Order Confirmed & Payment Verified',
+  PACKED: 'Order Packed & Quality Checked at Warehouse',
+  SHIPPED: 'Dispatched with Courier Partner',
+  OUT_FOR_DELIVERY: 'Out for Delivery in Destination City',
+  DELIVERED: 'Delivered Successfully to Customer',
+  CANCELLED: 'Shipment Cancelled',
+};
+
+const DEMO_SEED_ORDER: OrderRecord = {
+  order_id: 'ORDDEMO1001',
+  customer_name: 'Aditi Sharma (Demo Order)',
+  phone: '9876543210',
+  address: 'B-24, Bapu Nagar, Jaipur, Rajasthan, PIN: 302015',
+  amount_paise: 209800,
+  items: [
+    { id: 1, name: 'Cotton Straight Kurti', name_hi: 'कॉटन स्ट्रेट कुर्ती', size: 'M', qty: 1, price_paise: 79900 },
+    { id: 2, name: 'Anarkali Printed Kurti', name_hi: 'अनारकली प्रिंटेड कुर्ती', size: 'L', qty: 1, price_paise: 129900 },
+  ],
+  status: 'CONFIRMED',
+  tracking_id: 'TRK-KC-1001',
+  courier_name: 'Delhivery Express',
+  fulfillment_status: 'SHIPPED',
+  estimated_delivery: '22 Oct 2026',
+  tracking_history: [
+    {
+      status: 'ORDER_PLACED',
+      title: 'Order Confirmed & Payment Verified',
+      location: 'Jaipur Warehouse, Rajasthan',
+      note: 'Server webhook verified payment. Tracking ID TRK-KC-1001 generated.',
+      timestamp: '2026-10-18T10:15:00.000Z',
+    },
+    {
+      status: 'PACKED',
+      title: 'Order Packed & Quality Checked at Warehouse',
+      location: 'Sitapura Dispatch Center, Jaipur',
+      note: '2 items packed in tamper-evident courier bag.',
+      timestamp: '2026-10-18T15:40:00.000Z',
+    },
+    {
+      status: 'SHIPPED',
+      title: 'Dispatched with Courier Partner',
+      location: 'Jaipur Regional Sorting Hub',
+      note: 'Handed over to Delhivery Express (AWB: TRK-KC-1001). In transit to destination.',
+      timestamp: '2026-10-19T05:30:00.000Z',
+    },
+  ],
+  gateway_order_id: 'order_mock_ORDDEMO1001',
+  created_at: '2026-10-18T10:12:00.000Z',
+  expires_at: '2026-10-18T10:16:00.000Z',
+  confirmed_at: '2026-10-18T10:15:00.000Z',
+  qr_payload: 'upi://pay?pa=kurticorner.demo@upi&pn=Kurti%20Corner&tr=ORDDEMO1001&am=2098.00&cu=INR',
 };
 
 type GlobalStore = {
@@ -37,9 +113,11 @@ const globalForStore = globalThis as unknown as { __fashionStore?: GlobalStore }
 
 function getStore(): GlobalStore {
   if (!globalForStore.__fashionStore) {
+    const initialOrders = new Map<string, OrderRecord>();
+    initialOrders.set(DEMO_SEED_ORDER.order_id, JSON.parse(JSON.stringify(DEMO_SEED_ORDER)));
     globalForStore.__fashionStore = {
       products: DEMO_PRODUCTS.map((p) => ({ ...p })),
-      orders: new Map<string, OrderRecord>(),
+      orders: initialOrders,
       idempotencyMap: new Map<string, string>(),
       verifiedPayments: new Set<string>(),
       notificationTarget: process.env.TELEGRAM_CHAT_ID || 'YOUR_TELEGRAM_CHAT_ID_HERE',
@@ -188,7 +266,6 @@ export function createServerOrder(params: {
     return { success: false, status: 400, error: 'Order must contain between 1 and 30 items.' };
   }
 
-  // Aggregate quantities per product ID for stock checking
   const totalQtyById = new Map<number, number>();
   for (const it of items) {
     const pid = Number(it.id);
@@ -229,7 +306,7 @@ export function createServerOrder(params: {
   const orderId = `ORD${crypto.randomBytes(8).toString('hex').toUpperCase()}`;
   const gatewayOrderId = `order_mock_${orderId}`;
   const now = Date.now();
-  const expiresInSeconds = 240; // 4-minute dynamic QR lock window
+  const expiresInSeconds = 240;
   const expiresAt = new Date(now + expiresInSeconds * 1000).toISOString();
   const amountRupees = (amountPaise / 100).toFixed(2);
   const qrPayload = `upi://pay?pa=kurticorner.demo@upi&pn=Kurti%20Corner&tr=${orderId}&am=${amountRupees}&cu=INR&tn=Order%20${orderId}`;
@@ -242,6 +319,11 @@ export function createServerOrder(params: {
     amount_paise: amountPaise,
     items: orderItems,
     status: 'PENDING',
+    tracking_id: null,
+    courier_name: 'Delhivery Express',
+    fulfillment_status: 'PENDING_PAYMENT',
+    estimated_delivery: null,
+    tracking_history: [],
     gateway_order_id: gatewayOrderId,
     created_at: new Date(now).toISOString(),
     expires_at: expiresAt,
@@ -278,6 +360,24 @@ export function getServerOrder(orderId: string): OrderRecord | null {
   return o;
 }
 
+export function findServerOrderByOrderOrTrackingId(idOrTracking: string): OrderRecord | null {
+  const store = getStore();
+  const needle = String(idOrTracking || '').trim().toUpperCase();
+  if (!needle) return null;
+  for (const o of store.orders.values()) {
+    if (
+      o.order_id.toUpperCase() === needle ||
+      (o.tracking_id && o.tracking_id.toUpperCase() === needle)
+    ) {
+      if (o.status === 'PENDING' && Date.now() > new Date(o.expires_at).getTime()) {
+        o.status = 'EXPIRED';
+      }
+      return o;
+    }
+  }
+  return null;
+}
+
 export function confirmServerOrder(
   orderId: string,
   payment?: { id?: string; amount?: number; method?: string }
@@ -285,13 +385,19 @@ export function confirmServerOrder(
   success: boolean;
   result: 'confirmed' | 'already_confirmed' | 'duplicate_payment' | 'amount_mismatch' | 'expired' | 'unknown_order';
   orderId?: string;
+  trackingId?: string | null;
 } {
   const store = getStore();
   const o = store.orders.get(orderId);
   if (!o) return { success: false, result: 'unknown_order' };
 
   if (o.status === 'CONFIRMED') {
-    return { success: true, result: 'already_confirmed', orderId: o.order_id };
+    return {
+      success: true,
+      result: 'already_confirmed',
+      orderId: o.order_id,
+      trackingId: o.tracking_id,
+    };
   }
 
   if (o.status === 'PENDING' && Date.now() > new Date(o.expires_at).getTime()) {
@@ -307,12 +413,38 @@ export function confirmServerOrder(
 
   const paymentId = payment?.id || `pay_mock_${crypto.randomBytes(6).toString('hex')}`;
   if (store.verifiedPayments.has(paymentId)) {
-    return { success: true, result: 'duplicate_payment', orderId: o.order_id };
+    return {
+      success: true,
+      result: 'duplicate_payment',
+      orderId: o.order_id,
+      trackingId: o.tracking_id,
+    };
   }
 
   store.verifiedPayments.add(paymentId);
   o.status = 'CONFIRMED';
   o.confirmed_at = new Date().toISOString();
+
+  // Generate unique customer Tracking ID on confirmation
+  const trackingId = o.tracking_id || `TRK-KC-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+  const etaDate = new Date(Date.now() + 4 * 24 * 60 * 60 * 1000).toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+  o.tracking_id = trackingId;
+  o.courier_name = o.courier_name || 'Delhivery Express';
+  o.fulfillment_status = 'ORDER_PLACED';
+  o.estimated_delivery = etaDate;
+  o.tracking_history = [
+    {
+      status: 'ORDER_PLACED',
+      title: 'Order Confirmed & Payment Verified',
+      location: 'Jaipur Warehouse, Rajasthan',
+      note: `Payment verified. Tracking ID ${trackingId} generated.`,
+      timestamp: new Date().toISOString(),
+    },
+  ];
 
   // Decrement stock atomically
   for (const item of o.items) {
@@ -322,7 +454,49 @@ export function confirmServerOrder(
     }
   }
 
-  return { success: true, result: 'confirmed', orderId: o.order_id };
+  return {
+    success: true,
+    result: 'confirmed',
+    orderId: o.order_id,
+    trackingId,
+  };
+}
+
+export function updateServerOrderTracking(
+  orderId: string,
+  payload: {
+    fulfillmentStatus: FulfillmentStatus;
+    courierName?: string;
+    trackingId?: string;
+    estimatedDelivery?: string;
+    location?: string;
+    note?: string;
+  }
+): OrderRecord | null {
+  const store = getStore();
+  const o = store.orders.get(orderId);
+  if (!o) return null;
+
+  const nextStatus = payload.fulfillmentStatus || o.fulfillment_status || 'ORDER_PLACED';
+  const nextCourier = (payload.courierName || o.courier_name || 'Delhivery Express').trim();
+  const nextTrackingId = (payload.trackingId || o.tracking_id || `TRK-KC-${orderId.slice(-6)}`).trim().toUpperCase();
+  const nextEta = payload.estimatedDelivery !== undefined ? payload.estimatedDelivery : o.estimated_delivery;
+
+  o.fulfillment_status = nextStatus;
+  o.courier_name = nextCourier;
+  o.tracking_id = nextTrackingId;
+  o.estimated_delivery = nextEta || o.estimated_delivery;
+
+  const event: TrackingEvent = {
+    status: nextStatus,
+    title: FULFILLMENT_TITLES[nextStatus] || nextStatus,
+    location: (payload.location || 'Jaipur Fulfillment Hub').trim(),
+    note: (payload.note || `Status updated to ${nextStatus} via ${nextCourier} (${nextTrackingId}).`).trim(),
+    timestamp: new Date().toISOString(),
+  };
+  o.tracking_history = [...(o.tracking_history || []), event];
+
+  return o;
 }
 
 export function verifyAdminTokenHeader(tokenHeader: string | null): boolean {

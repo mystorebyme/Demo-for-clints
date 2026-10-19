@@ -1,6 +1,16 @@
 const { pool } = require('../config/db');
+const { emitToOrder } = require('../services/socket');
 const { getTarget, setTarget, sendTelegram } = require('../services/telegram');
 const { getCurrentTier, setCurrentTier, TIER_DESCRIPTIONS } = require('../services/fallbackService');
+
+const FULFILLMENT_TITLES = {
+  ORDER_PLACED: 'Order Confirmed & Payment Verified',
+  PACKED: 'Order Packed & Quality Checked at Warehouse',
+  SHIPPED: 'Dispatched with Courier Partner',
+  OUT_FOR_DELIVERY: 'Out for Delivery in Destination City',
+  DELIVERED: 'Delivered Successfully to Customer',
+  CANCELLED: 'Shipment Cancelled',
+};
 
 async function recordAudit(action, targetKey, details, ip) {
   await pool
@@ -25,13 +35,65 @@ async function updateNotificationTarget(req) {
 
 async function listOrders() {
   const { rows: orders } = await pool.query(
-    `SELECT order_id, customer_name, phone, amount_paise, status, items, created_at, confirmed_at
+    `SELECT order_id, customer_name, phone, address, amount_paise, status, tracking_id, courier_name, fulfillment_status, estimated_delivery, tracking_history, items, created_at, confirmed_at
      FROM orders ORDER BY created_at DESC LIMIT 100`
   );
   const { rows: products } = await pool.query(
     'SELECT id, name, name_hi, category, price_paise, image_url, stock FROM products ORDER BY id'
   );
   return { success: true, orders, products };
+}
+
+async function updateOrderTracking(req, reply) {
+  const { orderId } = req.params;
+  const { fulfillmentStatus, courierName, trackingId, estimatedDelivery, location, note } = req.body;
+
+  const { rows: existingRows } = await pool.query('SELECT * FROM orders WHERE order_id = $1', [orderId]);
+  if (!existingRows[0]) {
+    return reply.code(404).send({ success: false, error: 'Order not found.' });
+  }
+  const order = existingRows[0];
+
+  const nextStatus = fulfillmentStatus || order.fulfillment_status || 'ORDER_PLACED';
+  const nextCourier = (courierName || order.courier_name || 'Delhivery Express').trim();
+  const nextTrackingId = (trackingId || order.tracking_id || `TRK-KC-${orderId.slice(-6)}`).trim().toUpperCase();
+  const nextEta = estimatedDelivery !== undefined ? estimatedDelivery : order.estimated_delivery;
+
+  const currentHistory = Array.isArray(order.tracking_history) ? [...order.tracking_history] : [];
+  const milestone = {
+    status: nextStatus,
+    title: FULFILLMENT_TITLES[nextStatus] || nextStatus,
+    location: (location || 'Jaipur Fulfillment Hub').trim(),
+    note: (note || `Status updated to ${nextStatus} via ${nextCourier} (${nextTrackingId}).`).trim(),
+    timestamp: new Date().toISOString(),
+  };
+  currentHistory.push(milestone);
+
+  const { rows: updatedRows } = await pool.query(
+    `UPDATE orders SET fulfillment_status = $2, courier_name = $3, tracking_id = $4, estimated_delivery = $5, tracking_history = $6 WHERE order_id = $1 RETURNING *`,
+    [orderId, nextStatus, nextCourier, nextTrackingId, nextEta, JSON.stringify(currentHistory)]
+  );
+
+  await recordAudit(
+    'UPDATE_ORDER_TRACKING',
+    orderId,
+    { fulfillmentStatus: nextStatus, courierName: nextCourier, trackingId: nextTrackingId, location, note },
+    req.ip
+  );
+
+  emitToOrder(orderId, 'tracking_updated', {
+    orderId,
+    trackingId: nextTrackingId,
+    fulfillmentStatus: nextStatus,
+    courierName: nextCourier,
+    estimatedDelivery: nextEta,
+    trackingHistory: currentHistory,
+  });
+
+  return {
+    success: true,
+    order: updatedRows[0],
+  };
 }
 
 async function createProduct(req) {
@@ -88,6 +150,7 @@ module.exports = {
   getNotificationTarget,
   updateNotificationTarget,
   listOrders,
+  updateOrderTracking,
   createProduct,
   updateProduct,
   getFallbackTier,

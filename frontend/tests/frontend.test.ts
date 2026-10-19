@@ -18,7 +18,9 @@ import {
 import {
   confirmServerOrder,
   createServerOrder,
+  findServerOrderByOrderOrTrackingId,
   getServerOrder,
+  updateServerOrderTracking,
   validateCartServerSide,
   verifyAdminTokenHeader,
 } from '../lib/serverStore';
@@ -153,7 +155,7 @@ describe('Phase 1 Frontend — Checkout Form & Phone Validation', () => {
   });
 });
 
-describe('Phase 1 Frontend — Server-Authoritative Cart, Order Creation, Idempotency & Payment Verification', () => {
+describe('Phase 1 Frontend — Server-Authoritative Cart, Order Creation, Tracking ID & Admin Tracking Updates', () => {
   it('calculates cart totals exclusively from server product prices in paise', () => {
     const res = validateCartServerSide([
       { id: 1, qty: 2, size: 'M' }, // 79900 * 2 = 159800
@@ -163,7 +165,7 @@ describe('Phase 1 Frontend — Server-Authoritative Cart, Order Creation, Idempo
     assert.equal(res.totalPaise, 189700);
   });
 
-  it('creates an order with a 240s expiry, enforces idempotency keys, and confirms payment idempotently', () => {
+  it('creates an order, generates Tracking ID on confirmation, allows customer lookup by Tracking ID, and applies Admin tracking updates', () => {
     const idemKey = `test-idem-${Date.now()}`;
     const order1 = createServerOrder({
       customer: {
@@ -192,26 +194,39 @@ describe('Phase 1 Frontend — Server-Authoritative Cart, Order Creation, Idempo
       assert.equal(order2.orderId, order1.orderId);
     }
 
-    // Initial order status is PENDING
-    const fetched = getServerOrder(order1.orderId);
-    assert.equal(fetched?.status, 'PENDING');
-    assert.equal(fetched?.amount_paise, 79900);
-
-    // First confirmation succeeds
+    // Confirm payment -> generates Tracking ID (TRK-KC-...)
     const confirm1 = confirmServerOrder(order1.orderId, {
       id: `pay_test_${Date.now()}`,
       amount: 79900,
       method: 'upi_qr',
     });
     assert.equal(confirm1.result, 'confirmed');
+    assert.equal(Boolean(confirm1.trackingId && confirm1.trackingId.startsWith('TRK-KC-')), true);
 
-    // Replay confirmation returns already_confirmed
+    // Lookup by Tracking ID
+    const tracked = findServerOrderByOrderOrTrackingId(confirm1.trackingId!);
+    assert.equal(tracked?.order_id, order1.orderId);
+    assert.equal(tracked?.fulfillment_status, 'ORDER_PLACED');
+
+    // Admin updates tracking to SHIPPED
+    const updated = updateServerOrderTracking(order1.orderId, {
+      fulfillmentStatus: 'SHIPPED',
+      courierName: 'BlueDart Air',
+      location: 'Jaipur Airport Hub',
+      note: 'Dispatched by air courier',
+    });
+    assert.equal(updated?.fulfillment_status, 'SHIPPED');
+    assert.equal(updated?.courier_name, 'BlueDart Air');
+    assert.equal(updated?.tracking_history.length, 2);
+
+    // Replay confirmation returns already_confirmed with same trackingId
     const confirm2 = confirmServerOrder(order1.orderId, {
       id: `pay_test_second_${Date.now()}`,
       amount: 79900,
       method: 'upi_qr',
     });
     assert.equal(confirm2.result, 'already_confirmed');
+    assert.equal(confirm2.trackingId, confirm1.trackingId);
   });
 
   it('marks order FAILED on amount mismatch and protects admin token timing-safely', () => {

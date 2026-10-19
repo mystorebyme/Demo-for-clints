@@ -70,7 +70,7 @@ module.exports = async function routes(app) {
     openapi: '3.0.3',
     info: {
       title: 'High-Speed Fashion E-Commerce & Payment Verification Bridge API',
-      version: '1.0.0',
+      version: '1.1.0',
     },
     paths: {
       '/api/health': { get: { summary: 'Service & Fallback Tier Health Check' } },
@@ -78,9 +78,11 @@ module.exports = async function routes(app) {
       '/api/products/{id}': { get: { summary: 'Get single product details by ID' } },
       '/api/cart/validate': { post: { summary: 'Server-authoritative cart price & stock validation' } },
       '/api/create-order': { post: { summary: 'Create order & lock 240s payment session' } },
-      '/api/orders/{orderId}': { get: { summary: 'Get real-time order verification status' } },
+      '/api/orders/{orderId}': { get: { summary: 'Get real-time order verification & tracking ID' } },
+      '/api/track/{id}': { get: { summary: 'Public shipment & order tracking by Tracking ID or Order ID' } },
       '/api/webhooks/razorpay': { post: { summary: 'HMAC-verified Razorpay webhook receiver' } },
       '/api/admin/orders': { get: { summary: 'Protected admin order & inventory list' } },
+      '/api/admin/orders/{orderId}/tracking': { put: { summary: 'Admin live shipment & tracking status updater' } },
       '/api/admin/notification-target': {
         get: { summary: 'Get live Telegram chat ID' },
         put: { summary: 'Update live Telegram chat ID' },
@@ -119,6 +121,12 @@ module.exports = async function routes(app) {
     '/api/orders/:orderId/status',
     { onRequest: rateLimit({ name: 'order-status', limit: 60, windowMs: 60_000 }) },
     orders.getOrderStatus
+  );
+
+  app.get(
+    '/api/track/:id',
+    { onRequest: rateLimit({ name: 'track-order', limit: 60, windowMs: 60_000 }) },
+    orders.trackOrder
   );
 
   app.post('/api/webhooks/razorpay', webhook.razorpayWebhook);
@@ -164,6 +172,30 @@ module.exports = async function routes(app) {
     );
 
     adminApp.get('/api/admin/orders', admin.listOrders);
+
+    adminApp.put(
+      '/api/admin/orders/:orderId/tracking',
+      {
+        schema: {
+          body: {
+            type: 'object',
+            required: ['fulfillmentStatus'],
+            properties: {
+              fulfillmentStatus: {
+                type: 'string',
+                enum: ['ORDER_PLACED', 'PACKED', 'SHIPPED', 'OUT_FOR_DELIVERY', 'DELIVERED', 'CANCELLED'],
+              },
+              courierName: { type: 'string', maxLength: 80 },
+              trackingId: { type: 'string', maxLength: 60 },
+              estimatedDelivery: { type: 'string', maxLength: 80 },
+              location: { type: 'string', maxLength: 160 },
+              note: { type: 'string', maxLength: 400 },
+            },
+          },
+        },
+      },
+      admin.updateOrderTracking
+    );
 
     adminApp.post(
       '/api/admin/products',

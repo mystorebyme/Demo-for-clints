@@ -1,0 +1,11 @@
+{
+  "name": "fashion-payment-worker",
+  "version": "1.0.0",
+  "private": true,
+  "main": "src/worker.js",
+  "scripts": {
+    "start": "node src/worker.js",
+    "lint": "node --check src/worker.js tests/worker.test.js",
+    "test": "NODE_ENV=test node --test tests/worker.test.js"
+  }
+}

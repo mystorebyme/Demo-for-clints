@@ -238,9 +238,65 @@ export const rupees = (paise: number): string => {
   })}`;
 };
 
+export function rupeesInWords(paise: number): string {
+  const amount = Math.round((Number(paise) || 0) / 100);
+  if (amount <= 0) return 'Rupees Zero Only';
+  const ones = [
+    '',
+    'One',
+    'Two',
+    'Three',
+    'Four',
+    'Five',
+    'Six',
+    'Seven',
+    'Eight',
+    'Nine',
+    'Ten',
+    'Eleven',
+    'Twelve',
+    'Thirteen',
+    'Fourteen',
+    'Fifteen',
+    'Sixteen',
+    'Seventeen',
+    'Eighteen',
+    'Nineteen',
+  ];
+  const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+
+  const twoDigits = (n: number): string => {
+    if (n < 20) return ones[n];
+    return `${tens[Math.floor(n / 10)]}${n % 10 ? ' ' + ones[n % 10] : ''}`;
+  };
+
+  const parts: string[] = [];
+  let rem = amount;
+  if (rem >= 100000) {
+    parts.push(`${twoDigits(Math.floor(rem / 100000))} Lakh`);
+    rem %= 100000;
+  }
+  if (rem >= 1000) {
+    parts.push(`${twoDigits(Math.floor(rem / 1000))} Thousand`);
+    rem %= 1000;
+  }
+  if (rem >= 100) {
+    parts.push(`${ones[Math.floor(rem / 100)]} Hundred`);
+    rem %= 100;
+  }
+  if (rem > 0) {
+    parts.push(twoDigits(rem));
+  }
+  return `Rupees ${parts.join(' ')} Only`;
+}
+
 export function validateIndianPhone(phone: string): boolean {
   const cleaned = phone.replace(/\D/g, '');
   return /^[6-9]\d{9}$/.test(cleaned);
+}
+
+export function validateEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim());
 }
 
 export function validatePincode(pincode: string): boolean {
@@ -251,6 +307,7 @@ export function validateCheckoutForm(input: {
   name: string;
   phone: string;
   address: string;
+  email?: string;
   pincode?: string;
 }): { valid: boolean; errors: Record<string, string> } {
   const errors: Record<string, string> = {};
@@ -259,6 +316,9 @@ export function validateCheckoutForm(input: {
   }
   if (!validateIndianPhone(input.phone || '')) {
     errors.phone = 'Please enter a valid 10-digit Indian mobile number starting with 6–9.';
+  }
+  if (input.email !== undefined && input.email.trim() !== '' && !validateEmail(input.email)) {
+    errors.email = 'Please enter a valid email address to receive your GST receipt & Tracking ID.';
   }
   if (input.pincode !== undefined && input.pincode.trim() !== '' && !validatePincode(input.pincode)) {
     errors.pincode = 'Please enter a valid 6-digit Indian PIN code.';
@@ -279,9 +339,9 @@ export function buildWhatsAppShareUrl(product: {
   price_paise: number;
 }): string {
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
-  const text = `✨ Check out *${product.name}* (${product.name_hi || ''}) for just *${rupees(
+  const text = `✨ Explore *${product.name}* (${product.name_hi || ''}) — *${rupees(
     product.price_paise
-  )}* at Kranti Classes Ethnic Wear!\n🛍️ View here: ${origin}/products/${product.id}`;
+  )}* at Zariya Jaipur Royal Ethnic House!\n🛍️ View piece: ${origin}/products/${product.id}`;
   return `https://wa.me/?text=${encodeURIComponent(text)}`;
 }
 
@@ -291,10 +351,10 @@ export function buildWhatsAppOrderUrl(product: {
   price_paise: number;
   size?: string;
 }): string {
-  const text = `नमस्ते / Hello Kranti Classes Boutique! 🙏\nI want to order / inquire about:\n• *Product*: ${
+  const text = `नमस्ते / Hello Zariya Jaipur Boutique! 🙏\nI would like to order / inquire about:\n• *Piece*: ${
     product.name
   } (#${product.id})\n• *Price*: ${rupees(product.price_paise)}\n• *Size*: ${
     product.size || 'Free Size'
-  }\nPlease share availability & UPI details.`;
+  }\nPlease share availability & dispatch details.`;
   return `https://wa.me/919876543210?text=${encodeURIComponent(text)}`;
 }

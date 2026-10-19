@@ -13,11 +13,26 @@ const COUPONS = {
   ROYAL250: { type: 'FLAT', value: 25000, minPaise: 179900, maxDiscountPaise: 25000 },
 };
 
+function sanitizeText(raw, maxLen = 250) {
+  return String(raw || '')
+    .replace(/[<>"'`\\]/g, '')
+    .replace(/javascript:/gi, '')
+    .replace(/on\w+=/gi, '')
+    .trim()
+    .slice(0, maxLen);
+}
+
+function maskPhone(phone) {
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (digits.length < 4) return '******';
+  return `${digits.slice(0, 2)}******${digits.slice(-2)}`;
+}
+
 function computeCouponDiscount(rawCode, subtotalPaise) {
   if (!rawCode || !String(rawCode).trim()) {
     return { couponCode: null, discountPaise: 0 };
   }
-  const code = String(rawCode).trim().toUpperCase();
+  const code = sanitizeText(rawCode, 24).toUpperCase();
   const c = COUPONS[code];
   if (!c || subtotalPaise < c.minPaise) {
     return { couponCode: null, discountPaise: 0 };
@@ -55,7 +70,11 @@ async function getProductById(req, reply) {
 
 async function validateCart(req) {
   const rawItems = Array.isArray(req.body?.items) ? req.body.items : [];
-  const ids = [...new Set(rawItems.map((i) => Number(i.id)).filter((n) => Number.isInteger(n) && n > 0))];
+  const ids = [
+    ...new Set(
+      rawItems.map((i) => Number(i.id)).filter((n) => Number.isInteger(n) && n > 0)
+    ),
+  ];
   const { rows: products } = await pool.query(
     'SELECT id, name, name_hi, category, price_paise, image_url, stock FROM products WHERE id = ANY($1::int[])',
     [ids]
@@ -79,7 +98,7 @@ async function validateCart(req) {
       id: p.id,
       name: p.name,
       name_hi: p.name_hi,
-      size: item.size || 'Free Size',
+      size: sanitizeText(item.size || 'Free Size', 24),
       qty: safeQty,
       price_paise: p.price_paise,
       line_total_paise: lineTotal,
@@ -87,7 +106,10 @@ async function validateCart(req) {
     });
   }
 
-  const { couponCode, discountPaise } = computeCouponDiscount(req.body?.couponCode, subtotalPaise);
+  const { couponCode, discountPaise } = computeCouponDiscount(
+    req.body?.couponCode,
+    subtotalPaise
+  );
   const totalPaise = Math.max(0, subtotalPaise - discountPaise);
 
   return {
@@ -106,15 +128,29 @@ async function validateCart(req) {
 async function createOrder(req, reply) {
   const { customer, items, couponCode: requestedCoupon } = req.body;
   const idempotencyKey = req.headers['x-idempotency-key']
-    ? String(req.headers['x-idempotency-key']).slice(0, 120)
-    : req.body?.idempotencyKey || null;
+    ? sanitizeText(req.headers['x-idempotency-key'], 120)
+    : req.body?.idempotencyKey
+    ? sanitizeText(req.body.idempotencyKey, 120)
+    : null;
+
+  const safeName = sanitizeText(customer?.name, 80);
+  const safePhone = String(customer?.phone || '').replace(/\D/g, '');
+  const safeAddress = sanitizeText(customer?.address, 280);
+
+  if (safeName.length < 2 || !/^[6-9]\d{9}$/.test(safePhone) || safeAddress.length < 10) {
+    return reply.code(400).send({
+      success: false,
+      error: 'Invalid customer name, 10-digit Indian phone number, or shipping address.',
+    });
+  }
 
   const currentTier = await getCurrentTier();
   if (currentTier === 4) {
     return reply.code(503).send({
       success: false,
       fallbackTier: 4,
-      error: 'Payment gateway is temporarily under maintenance (Tier 4 Fallback). Please try again shortly or contact support.',
+      error:
+        'Payment gateway is temporarily under maintenance (Tier 4 Fallback). Please try again shortly or contact support.',
     });
   }
 
@@ -129,7 +165,7 @@ async function createOrder(req, reply) {
         success: true,
         idempotentReplay: true,
         orderId: ex.order_id,
-        invoiceNumber: `INV-KC-2026-${ex.order_id.slice(-6)}`,
+        invoiceNumber: `ZJ/2026-27/${ex.order_id.slice(-6)}`,
         gatewayOrderId: ex.gateway_order_id,
         amountPaise: ex.amount_paise,
         currency: 'INR',
@@ -146,7 +182,12 @@ async function createOrder(req, reply) {
 
   const qtyById = new Map();
   for (const it of items) {
-    qtyById.set(it.id, (qtyById.get(it.id) || 0) + it.qty);
+    const numId = Number(it.id);
+    const numQty = Number(it.qty);
+    if (!Number.isInteger(numId) || numId < 1 || !Number.isInteger(numQty) || numQty < 1 || numQty > 10) {
+      return reply.code(400).send({ success: false, error: 'Invalid cart item payload.' });
+    }
+    qtyById.set(numId, (qtyById.get(numId) || 0) + numQty);
   }
   const ids = [...qtyById.keys()];
 
@@ -163,25 +204,36 @@ async function createOrder(req, reply) {
   for (const p of products) {
     const qty = qtyById.get(p.id);
     if (qty > p.stock) {
-      return reply.code(409).send({ success: false, error: `Not enough stock for ${p.name}.` });
+      return reply
+        .code(409)
+        .send({ success: false, error: `Not enough stock for ${p.name}.` });
     }
+    // Authoritative server-side price calculation (client prices are strictly ignored)
     subtotalPaise += p.price_paise * qty;
-    orderItems.push({ id: p.id, name: p.name, name_hi: p.name_hi, qty, price_paise: p.price_paise });
+    orderItems.push({
+      id: p.id,
+      name: p.name,
+      name_hi: p.name_hi,
+      qty,
+      price_paise: p.price_paise,
+    });
   }
 
   const { couponCode, discountPaise } = computeCouponDiscount(requestedCoupon, subtotalPaise);
   const amountPaise = Math.max(100, subtotalPaise - discountPaise);
 
   const orderId = `ORD${crypto.randomBytes(8).toString('hex').toUpperCase()}`;
-  const invoiceNumber = `INV-KC-2026-${orderId.slice(-6)}`;
+  const invoiceNumber = `ZJ/2026-27/${orderId.slice(-6)}`;
 
   const sessionLockKey = `lock:qr_session:${orderId}`;
-  await redis.set(sessionLockKey, String(amountPaise), 'EX', env.ORDER_EXPIRY_MINUTES * 60, 'NX').catch(() => {});
+  await redis
+    .set(sessionLockKey, String(amountPaise), 'EX', env.ORDER_EXPIRY_MINUTES * 60, 'NX')
+    .catch(() => {});
 
   const { rows: userRows } = await pool.query(
     `INSERT INTO users (phone, name) VALUES ($1, $2)
      ON CONFLICT (phone) DO UPDATE SET name = EXCLUDED.name RETURNING id`,
-    [customer.phone, customer.name]
+    [safePhone, safeName]
   );
 
   let gatewayOrder;
@@ -195,7 +247,7 @@ async function createOrder(req, reply) {
   }
 
   const amountRupees = (amountPaise / 100).toFixed(2);
-  const qrPayload = `upi://pay?pa=kurticorner.demo@upi&pn=Kurti%20Corner&tr=${orderId}&am=${amountRupees}&cu=INR`;
+  const qrPayload = `upi://pay?pa=zariyajaipur@upi&pn=Zariya%20Jaipur&tr=${orderId}&am=${amountRupees}&cu=INR`;
 
   const { rows: insertedRows } = await pool.query(
     `INSERT INTO orders (order_id, user_id, customer_name, phone, address, amount_paise, items, gateway_order_id, qr_payload, idempotency_key, fallback_tier)
@@ -203,9 +255,9 @@ async function createOrder(req, reply) {
     [
       orderId,
       userRows[0].id,
-      customer.name,
-      customer.phone,
-      customer.address,
+      safeName,
+      safePhone,
+      safeAddress,
       amountPaise,
       JSON.stringify(orderItems),
       gatewayOrder.id,
@@ -216,7 +268,8 @@ async function createOrder(req, reply) {
   );
 
   const expiresAt =
-    insertedRows[0]?.expires_at || new Date(Date.now() + env.ORDER_EXPIRY_MINUTES * 60 * 1000).toISOString();
+    insertedRows[0]?.expires_at ||
+    new Date(Date.now() + env.ORDER_EXPIRY_MINUTES * 60 * 1000).toISOString();
 
   return {
     success: true,
@@ -249,12 +302,12 @@ async function getOrderStatus(req, reply) {
   return {
     success: true,
     orderId: o.order_id,
-    invoiceNumber: `INV-KC-2026-${o.order_id.slice(-6)}`,
+    invoiceNumber: `ZJ/2026-27/${o.order_id.slice(-6)}`,
     status: o.status,
     amountPaise: o.amount_paise,
     items: o.items,
     trackingId: o.tracking_id || null,
-    courierName: o.courier_name || 'Delhivery Express',
+    courierName: o.courier_name || 'BlueDart Royal Priority Air',
     fulfillmentStatus: o.fulfillment_status || 'PENDING_PAYMENT',
     estimatedDelivery: o.estimated_delivery || null,
     trackingHistory: o.tracking_history || [],
@@ -266,11 +319,14 @@ async function getOrderStatus(req, reply) {
   };
 }
 
-// Public Tracking Lookup by either Tracking ID (TRK-KC-...) or Order ID (ORD...)
+// Public Tracking Lookup by confidential Tracking ID (TRK-KC-...) or cryptographic Order ID (ORD...)
 async function trackOrder(req, reply) {
-  const rawId = String(req.params.id || '').trim();
-  if (!rawId || rawId.length < 4) {
-    return reply.code(400).send({ success: false, error: 'Please provide a valid Tracking ID or Order ID.' });
+  const rawId = sanitizeText(req.params.id, 64);
+  if (!rawId || rawId.length < 6) {
+    return reply.code(400).send({
+      success: false,
+      error: 'Please provide a valid confidential Tracking ID.',
+    });
   }
   const { rows } = await pool.query(
     'SELECT * FROM orders WHERE UPPER(order_id) = UPPER($1) OR UPPER(tracking_id) = UPPER($1)',
@@ -279,21 +335,24 @@ async function trackOrder(req, reply) {
   if (!rows[0]) {
     return reply.code(404).send({
       success: false,
-      error: 'No order found with this Tracking ID or Order ID.',
+      error: 'No shipment found with this confidential Tracking ID.',
     });
   }
   const o = rows[0];
   return {
     success: true,
     orderId: o.order_id,
-    invoiceNumber: `INV-KC-2026-${o.order_id.slice(-6)}`,
+    invoiceNumber: `ZJ/2026-27/${o.order_id.slice(-6)}`,
     trackingId: o.tracking_id || null,
     paymentStatus: o.status,
-    fulfillmentStatus: o.fulfillment_status || (o.status === 'CONFIRMED' ? 'ORDER_PLACED' : 'PENDING_PAYMENT'),
-    courierName: o.courier_name || 'Delhivery Express',
+    fulfillmentStatus:
+      o.fulfillment_status ||
+      (o.status === 'CONFIRMED' ? 'ORDER_PLACED' : 'PENDING_PAYMENT'),
+    courierName: o.courier_name || 'BlueDart Royal Priority Air',
     estimatedDelivery: o.estimated_delivery || null,
     trackingHistory: o.tracking_history || [],
     customerName: o.customer_name,
+    customerPhoneMasked: maskPhone(o.phone),
     address: o.address,
     amountPaise: o.amount_paise,
     items: o.items || [],
@@ -305,7 +364,10 @@ async function trackOrder(req, reply) {
 // DEV ONLY (PAYMENT_MODE=mock): simulates the gateway telling us a payment succeeded.
 async function mockPay(req, reply) {
   if (env.PAYMENT_MODE !== 'mock') return reply.code(404).send({ success: false });
-  const { rows } = await pool.query('SELECT gateway_order_id, amount_paise FROM orders WHERE order_id = $1', [req.body.orderId]);
+  const { rows } = await pool.query(
+    'SELECT gateway_order_id, amount_paise FROM orders WHERE order_id = $1',
+    [req.body.orderId]
+  );
   if (!rows[0]) return reply.code(404).send({ success: false, error: 'Order not found.' });
   const result = await confirmOrder(rows[0].gateway_order_id, {
     id: req.body.paymentId || `pay_mock_${crypto.randomBytes(6).toString('hex')}`,
@@ -315,4 +377,12 @@ async function mockPay(req, reply) {
   return { success: true, ...result };
 }
 
-module.exports = { listProducts, getProductById, validateCart, createOrder, getOrderStatus, trackOrder, mockPay };
+module.exports = {
+  listProducts,
+  getProductById,
+  validateCart,
+  createOrder,
+  getOrderStatus,
+  trackOrder,
+  mockPay,
+};

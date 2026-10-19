@@ -3,6 +3,8 @@ import {
   getAdminAnalyticsSummary,
   getAdminConfig,
   getLiveProducts,
+  getStoreProfile,
+  listSentEmails,
   listServerCoupons,
   listServerOrders,
   verifyAdminTokenHeader,
@@ -14,7 +16,10 @@ export async function GET(req: NextRequest) {
   const token = req.headers.get('x-admin-token');
 
   if (!verifyAdminTokenHeader(token)) {
-    return NextResponse.json({ success: false, error: 'Unauthorized admin token' }, { status: 401 });
+    return NextResponse.json(
+      { success: false, error: 'Unauthorized admin token' },
+      { status: 401 }
+    );
   }
 
   const orders = listServerOrders();
@@ -22,6 +27,8 @@ export async function GET(req: NextRequest) {
   const analytics = getAdminAnalyticsSummary();
   const products = getLiveProducts();
   const coupons = listServerCoupons();
+  const emails = listSentEmails();
+  const storeProfile = getStoreProfile();
 
   return NextResponse.json({
     success: true,
@@ -30,5 +37,7 @@ export async function GET(req: NextRequest) {
     analytics,
     products,
     coupons,
+    emails,
+    storeProfile,
   });
 }

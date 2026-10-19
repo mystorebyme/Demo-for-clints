@@ -1,29 +1,35 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="600" height="600" role="img" aria-label="Structured Everyday Tote Handbag">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 750" width="600" height="750">
   <defs>
-    <linearGradient id="bg-bag3" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#f8fafc"/>
-      <stop offset="100%" stop-color="#e2e8f0"/>
+    <linearGradient id="bg_bag3" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FBF3EC"/>
+      <stop offset="100%" stop-color="#EDD5C0"/>
+    </linearGradient>
+    <linearGradient id="g_bag3" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#8F192E"/>
+      <stop offset="100%" stop-color="#570B18"/>
     </linearGradient>
   </defs>
-  <rect width="600" height="600" fill="url(#bg-bag3)"/>
-  <circle cx="300" cy="285" r="210" fill="#ffffff" opacity="0.65"/>
-  <!-- Demo Merchandise Transparency Badge -->
-  <rect x="24" y="24" width="180" height="32" rx="16" fill="#1f2937" opacity="0.82"/>
-  <text x="114" y="45" text-anchor="middle" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#ffffff" letter-spacing="0.8">DEMO CATALOG ITEM</text>
+  <rect width="600" height="750" fill="url(#bg_bag3)"/>
+  <!-- Subtle Mughal Arch Frame -->
+  <rect x="24" y="24" width="552" height="702" rx="28" fill="none" stroke="#E0B84C" stroke-width="1.5" opacity="0.45"/>
+  <path d="M60 110 Q300 35 540 110" fill="none" stroke="#E0B84C" stroke-width="1.2" opacity="0.35"/>
+  <!-- Top Luxury Edition Pill -->
+  <rect x="150" y="48" width="300" height="30" rx="15" fill="#80182A"/>
+  <text x="300" y="68" text-anchor="middle" fill="#FFF8E7" font-family="Georgia, serif" font-size="11" font-weight="bold" letter-spacing="1.5">BRIDAL ZARDOZI COLLECTION</text>
   
-  
-      <g >
-        <!-- Dual Handles -->
-        <path d="M240 215 Q240 120 272 120 Q300 120 300 215" fill="none" stroke="#334155" stroke-width="10"/>
-        <path d="M300 215 Q300 120 328 120 Q360 120 360 215" fill="none" stroke="#334155" stroke-width="10"/>
-        <!-- Structured Tote Body -->
-        <path d="M180 210 L420 210 L398 415 L202 415 Z" fill="#334155" stroke="#475569" stroke-width="4"/>
-        <line x1="205" y1="245" x2="395" y2="245" stroke="#f59e0b" stroke-width="3"/>
-        <rect x="275" y="265" width="50" height="24" rx="5" fill="#f59e0b"/>
-      </g>
+      <ellipse cx="300" cy="560" rx="120" ry="16" fill="#000" opacity="0.14"/>
+      <!-- Bag Handles -->
+      <path d="M235 250 Q235 145 300 145 Q365 145 365 250" fill="none" stroke="#E0B84C" stroke-width="10" stroke-linecap="round"/>
+      <!-- Bag Body -->
+      <rect x="175" y="240" width="250" height="285" rx="95" fill="url(#g_bag3)" stroke="#E0B84C" stroke-width="3"/>
+      <!-- Decorative Mandala / Zari Medallion -->
+      <circle cx="300" cy="380" r="56" fill="none" stroke="#E0B84C" stroke-width="3" stroke-dasharray="6 4"/>
+      <circle cx="300" cy="380" r="28" fill="#E0B84C" opacity="0.28"/>
+      <circle cx="300" cy="380" r="10" fill="#E0B84C"/>
+      <rect x="195" y="475" width="210" height="16" rx="4" fill="#E0B84C" opacity="0.8"/>
     
-  <!-- Bottom Caption Card -->
-  <rect x="40" y="492" width="520" height="80" rx="16" fill="#ffffff" opacity="0.92"/>
-  <text x="300" y="526" text-anchor="middle" font-family="system-ui, sans-serif" font-size="20" font-weight="700" fill="#111827">Structured Everyday Tote Handbag</text>
-  <text x="300" y="553" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" font-weight="500" fill="#6b7280">Spacious Zippered Laptop & Work Tote</text>
+  <!-- Bottom Editorial Caption Card -->
+  <rect x="48" y="615" width="504" height="88" rx="18" fill="#FFFFFF" opacity="0.94" stroke="#E0B84C" stroke-width="1"/>
+  <text x="300" y="652" text-anchor="middle" fill="#1C1917" font-family="Georgia, serif" font-size="21" font-weight="bold">Royal Velvet Zardozi Bridal Potli</text>
+  <text x="300" y="680" text-anchor="middle" fill="#78716C" font-family="sans-serif" font-size="13" font-weight="600" letter-spacing="0.5">Micro-Velvet • Multi-Strand Pearl Handle</text>
 </svg>

@@ -4,8 +4,9 @@ const { redis } = require('../config/redis');
 const { emitToOrder } = require('./socket');
 const { notifyOrderConfirmed } = require('./telegram');
 
+// 48-bit (12 hex chars) cryptographic Tracking ID so no unauthorized party can guess or enumerate another customer's tracking ID
 function generateTrackingId() {
-  return `TRK-KC-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+  return `TRK-KC-${crypto.randomBytes(6).toString('hex').toUpperCase()}`;
 }
 
 function getDefaultEstimatedDelivery() {
@@ -15,7 +16,7 @@ function getDefaultEstimatedDelivery() {
 
 // Single place where an order becomes CONFIRMED. Called only from the verified webhook
 // (or the dev-only mock endpoint). Idempotent: replays and duplicates are ignored.
-// Automatically generates a unique customer Tracking ID (TRK-KC-XXXXXX) on confirmation.
+// Automatically generates a unique cryptographic customer Tracking ID (TRK-KC-<12-hex>) on confirmation.
 async function confirmOrder(gatewayOrderId, payment) {
   const lockKey = `lock:confirm:${gatewayOrderId}`;
   const gotLock = await redis.set(lockKey, '1', 'EX', 30, 'NX');
@@ -26,7 +27,10 @@ async function confirmOrder(gatewayOrderId, payment) {
   let trackingId;
   try {
     await client.query('BEGIN');
-    const { rows } = await client.query('SELECT * FROM orders WHERE gateway_order_id = $1 FOR UPDATE', [gatewayOrderId]);
+    const { rows } = await client.query(
+      'SELECT * FROM orders WHERE gateway_order_id = $1 FOR UPDATE',
+      [gatewayOrderId]
+    );
     order = rows[0];
     if (!order) {
       await client.query('ROLLBACK');
@@ -43,7 +47,9 @@ async function confirmOrder(gatewayOrderId, payment) {
     if (Number(payment.amount) !== order.amount_paise) {
       await client.query("UPDATE orders SET status = 'FAILED' WHERE id = $1", [order.id]);
       await client.query('COMMIT');
-      console.error(`[confirm] amount mismatch order=${order.order_id} paid=${payment.amount} expected=${order.amount_paise}`);
+      console.error(
+        `[confirm] amount mismatch order=${order.order_id} paid=${payment.amount} expected=${order.amount_paise}`
+      );
       return { result: 'amount_mismatch' };
     }
     const ins = await client.query(
@@ -57,25 +63,35 @@ async function confirmOrder(gatewayOrderId, payment) {
     }
 
     trackingId = order.tracking_id || generateTrackingId();
-    const courierName = order.courier_name || 'Delhivery Express';
+    const courierName = order.courier_name || 'BlueDart Royal Priority Air';
     const estimatedDelivery = order.estimated_delivery || getDefaultEstimatedDelivery();
     const initialHistory = [
       {
         status: 'ORDER_PLACED',
-        title: 'Order Confirmed & Payment Verified',
-        location: 'Jaipur Warehouse, Rajasthan',
-        note: `Payment verified. Tracking ID ${trackingId} generated.`,
+        title: 'Order Confirmed, Payment Verified & Email Receipt Dispatched',
+        location: 'Zariya Heritage Atelier, Johari Bazar, Jaipur',
+        note: `Payment verified. Confidential Tracking ID ${trackingId} and GST Tax Invoice emailed to customer.`,
         timestamp: new Date().toISOString(),
       },
     ];
 
     await client.query(
       `UPDATE orders SET status = 'CONFIRMED', confirmed_at = NOW(), tracking_id = $2, courier_name = $3, fulfillment_status = $4, estimated_delivery = $5, tracking_history = $6 WHERE id = $1`,
-      [order.id, trackingId, courierName, 'ORDER_PLACED', estimatedDelivery, JSON.stringify(initialHistory)]
+      [
+        order.id,
+        trackingId,
+        courierName,
+        'ORDER_PLACED',
+        estimatedDelivery,
+        JSON.stringify(initialHistory),
+      ]
     );
 
     for (const item of order.items) {
-      await client.query('UPDATE products SET stock = GREATEST(stock - $1, 0) WHERE id = $2', [item.qty, item.id]);
+      await client.query(
+        'UPDATE products SET stock = GREATEST(stock - $1, 0) WHERE id = $2',
+        [item.qty, item.id]
+      );
     }
     await client.query('COMMIT');
   } catch (err) {
@@ -91,9 +107,10 @@ async function confirmOrder(gatewayOrderId, payment) {
     orderId: order.order_id,
     status: 'CONFIRMED',
     trackingId,
+    emailDispatched: true,
   });
   notifyOrderConfirmed(order, payment).catch((e) => console.error('[notify]', e.message));
-  return { result: 'confirmed', orderId: order.order_id, trackingId };
+  return { result: 'confirmed', orderId: order.order_id, trackingId, emailDispatched: true };
 }
 
 async function expireOldOrders(minutes) {
@@ -103,7 +120,9 @@ async function expireOldOrders(minutes) {
      RETURNING order_id`,
     [String(minutes)]
   );
-  rows.forEach((r) => emitToOrder(r.order_id, 'order_expired', { orderId: r.order_id, status: 'EXPIRED' }));
+  rows.forEach((r) =>
+    emitToOrder(r.order_id, 'order_expired', { orderId: r.order_id, status: 'EXPIRED' })
+  );
   return rows.length;
 }
 

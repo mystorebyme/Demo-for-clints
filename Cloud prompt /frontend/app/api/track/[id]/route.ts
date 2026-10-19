@@ -1,33 +1,41 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { findServerOrderByOrderOrTrackingId } from '../../../../lib/serverStore';
+import {
+  findServerOrderByOrderOrTrackingId,
+  maskEmail,
+  maskPhone,
+} from '../../../../lib/serverStore';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   context: { params: { id: string } }
 ) {
-  const id = (context.params.id || '').trim();
-  if (!id) {
+  const id = (context.params.id || '').trim().toUpperCase();
+  if (!id || id.length < 6) {
     return NextResponse.json(
-      { success: false, error: 'Please provide a valid Tracking ID or Order ID' },
+      {
+        success: false,
+        error: 'Please enter the confidential Tracking ID sent to your email (e.g. TRK-KC-...)',
+      },
       { status: 400 }
     );
   }
 
-  const backendUrl = process.env.BACKEND_INTERNAL_URL;
-  if (backendUrl) {
-    try {
-      const res = await fetch(`${backendUrl}/api/track/${encodeURIComponent(id)}`, {
-        cache: 'no-store',
-      });
-      if (res.ok || res.status === 404) {
-        const data = await res.json();
-        return NextResponse.json(data, { status: res.status });
-      }
-    } catch {
-      // Fallback to local server store
-    }
+  // Anti-enumeration guard: unless it's a confidential TRK-KC-... token or the showcase seed ORDDEMO1001,
+  // require phone last-4 verification query param (?phoneLast4=XXXX) when searching by raw Order ID.
+  const isTrackingToken = id.startsWith('TRK-KC-');
+  const phoneLast4 = (req.nextUrl.searchParams.get('phone') || '').replace(/\D/g, '').slice(-4);
+
+  if (!isTrackingToken && id !== 'ORDDEMO1001' && phoneLast4.length !== 4) {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          'For your privacy, public tracking requires your confidential Tracking ID (TRK-KC-...) sent to your email.',
+      },
+      { status: 403 }
+    );
   }
 
   const order = findServerOrderByOrderOrTrackingId(id);
@@ -35,9 +43,19 @@ export async function GET(
     return NextResponse.json(
       {
         success: false,
-        error: `No order found matching "${id}". Try demo Tracking ID: TRK-KC-1001`,
+        error: 'No shipment found matching this confidential Tracking ID. Please check your email receipt.',
       },
       { status: 404 }
+    );
+  }
+
+  if (!isTrackingToken && id !== 'ORDDEMO1001' && !order.phone.endsWith(phoneLast4)) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Phone verification did not match this order.',
+      },
+      { status: 403 }
     );
   }
 
@@ -52,10 +70,13 @@ export async function GET(
     estimatedDelivery: order.estimated_delivery,
     trackingHistory: order.tracking_history || [],
     customerName: order.customer_name,
-    phone: order.phone,
+    // Mask sensitive PII on public tracking endpoint to prevent data leaks
+    customerEmail: maskEmail(order.customer_email),
+    phone: maskPhone(order.phone),
     address: order.address,
     subtotalPaise: order.subtotal_paise,
     discountPaise: order.discount_paise,
+    shippingPaise: order.shipping_paise,
     couponCode: order.coupon_code,
     gstPaise: order.gst_paise,
     amountPaise: order.amount_paise,

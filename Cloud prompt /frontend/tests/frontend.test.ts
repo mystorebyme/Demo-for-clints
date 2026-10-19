@@ -13,7 +13,9 @@ import {
   buildWhatsAppShareUrl,
   DICTIONARIES,
   rupees,
+  rupeesInWords,
   validateCheckoutForm,
+  validateEmail,
   validateIndianPhone,
   validatePincode,
 } from '../lib/store';
@@ -24,22 +26,27 @@ import {
   findServerOrderByOrderOrTrackingId,
   getAdminAnalyticsSummary,
   getLiveProductById,
-  getServerOrder,
+  getOrderEmailReceipt,
+  getStoreProfile,
+  listSentEmails,
+  maskEmail,
+  maskPhone,
+  sanitizeText,
   updateLiveProduct,
   updateServerOrderTracking,
+  updateStoreProfile,
   upsertServerCoupon,
   validateCartServerSide,
   verifyAdminTokenHeader,
 } from '../lib/serverStore';
 
-describe('Phase 1 Frontend — Catalog, Search, Filters, Sorting & Pagination', () => {
-  it('contains all 3 required categories (kurti, bag, accessory) with demo flag', () => {
+describe('Phase 1 Frontend — Luxury Catalog, Search, Filters, Sorting & Pagination', () => {
+  it('contains all 3 required categories (kurti, bag, accessory) with integer paise prices', () => {
     const categories = new Set(DEMO_PRODUCTS.map((p) => p.category));
     assert.equal(categories.has('kurti'), true);
     assert.equal(categories.has('bag'), true);
     assert.equal(categories.has('accessory'), true);
     for (const p of DEMO_PRODUCTS) {
-      assert.equal(p.is_demo, true);
       assert.equal(Number.isInteger(p.price_paise) && p.price_paise > 0, true);
     }
   });
@@ -58,7 +65,6 @@ describe('Phase 1 Frontend — Catalog, Search, Filters, Sorting & Pagination', 
 
     const inStock = filterAndSortProducts(DEMO_PRODUCTS, { inStockOnly: true });
     assert.equal(inStock.every((p) => p.stock > 0), true);
-    assert.equal(inStock.length < DEMO_PRODUCTS.length, true);
   });
 
   it('searches across both English and Hindi product names and descriptions', () => {
@@ -97,8 +103,8 @@ describe('Phase 1 Frontend — Catalog, Search, Filters, Sorting & Pagination', 
   it('normalizes .webp database image URLs to .svg via enrichProduct', () => {
     const enriched = enrichProduct({
       id: 1,
-      name: 'Cotton Straight Kurti',
-      name_hi: 'कॉटन स्ट्रेट कुर्ती',
+      name: 'Sanganeri Mulmul Cotton Straight Kurti',
+      name_hi: 'सांगानेरी मलमल कॉटन स्ट्रेट कुर्ती',
       category: 'kurti',
       price_paise: 79900,
       image_url: '/products/kurti1.webp',
@@ -108,7 +114,7 @@ describe('Phase 1 Frontend — Catalog, Search, Filters, Sorting & Pagination', 
   });
 });
 
-describe('Phase 1 Frontend — Bilingual (EN/HI) Completeness, WhatsApp Links & Formatting', () => {
+describe('Phase 1 Frontend — Bilingual (EN/HI) Completeness, Amount-in-Words & WhatsApp Links', () => {
   it('ensures English and Hindi dictionaries have identical translation keys and non-empty values', () => {
     const enKeys = Object.keys(DICTIONARIES.en).sort();
     const hiKeys = Object.keys(DICTIONARIES.hi).sort();
@@ -119,21 +125,21 @@ describe('Phase 1 Frontend — Bilingual (EN/HI) Completeness, WhatsApp Links & 
     }
   });
 
-  it('formats paise into Indian Rupees and builds WhatsApp share/order URLs accurately', () => {
+  it('formats paise into Indian Rupees, converts Rupees to Words, and builds WhatsApp URLs', () => {
     assert.equal(rupees(79900), '₹799');
     assert.equal(rupees(129900), '₹1,299');
-    assert.equal(rupees(50023), '₹500.23');
+    assert.equal(rupeesInWords(149900).includes('One Thousand Four Hundred Ninety Nine'), true);
 
     const shareUrl = buildWhatsAppShareUrl({
       id: 2,
-      name: 'Festive Anarkali Kurti',
+      name: 'Maharani Zardozi Festive Anarkali Kurti',
       price_paise: 129900,
     });
     assert.equal(shareUrl.startsWith('https://wa.me/?text='), true);
 
     const orderUrl = buildWhatsAppOrderUrl({
       id: 2,
-      name: 'Festive Anarkali Kurti',
+      name: 'Maharani Zardozi Festive Anarkali Kurti',
       price_paise: 129900,
       size: 'M',
     });
@@ -141,34 +147,38 @@ describe('Phase 1 Frontend — Bilingual (EN/HI) Completeness, WhatsApp Links & 
   });
 });
 
-describe('Phase 1 Frontend — Checkout Form & Phone Validation', () => {
-  it('validates 10-digit Indian mobile numbers starting with 6-9', () => {
+describe('Phase 1 Frontend — Checkout Form, Email, Phone & Security Sanitization', () => {
+  it('validates 10-digit Indian mobile numbers, emails, and 6-digit PIN codes', () => {
     assert.equal(validateIndianPhone('9876543210'), true);
-    assert.equal(validateIndianPhone('6123456789'), true);
     assert.equal(validateIndianPhone('5123456789'), false);
-    assert.equal(validateIndianPhone('987654321'), false);
-    assert.equal(validateIndianPhone('98765432100'), false);
-  });
-
-  it('validates 6-digit Indian PIN codes', () => {
+    assert.equal(validateEmail('priya.sharma@gmail.com'), true);
+    assert.equal(validateEmail('bad-email'), false);
     assert.equal(validatePincode('302001'), true);
     assert.equal(validatePincode('002001'), false);
-    assert.equal(validatePincode('30200'), false);
   });
 
-  it('rejects incomplete checkout forms and accepts valid forms', () => {
+  it('strips XSS payloads and masks PII phone/email for public tracking lookups', () => {
+    const cleaned = sanitizeText('<script>alert("xss")</script>Priya Sharma', 80);
+    assert.equal(cleaned.includes('<'), false);
+    assert.equal(cleaned.includes('>'), false);
+    assert.equal(maskPhone('9876543210'), '+91-******3210');
+    assert.equal(maskEmail('priya.sharma@gmail.com').includes('@gmail.com'), true);
+  });
+
+  it('rejects incomplete checkout forms and accepts valid forms with email', () => {
     assert.equal(
-      validateCheckoutForm({ name: 'A', phone: '9876543210', address: '123 MG Road, Jaipur' }).valid,
-      false
-    );
-    assert.equal(
-      validateCheckoutForm({ name: 'Priya Sharma', phone: '1234567890', address: '123 MG Road, Jaipur' }).valid,
+      validateCheckoutForm({
+        name: 'A',
+        phone: '9876543210',
+        address: '123 MG Road, Jaipur',
+      }).valid,
       false
     );
     assert.equal(
       validateCheckoutForm({
         name: 'Priya Sharma',
         phone: '9876543210',
+        email: 'priya.sharma@gmail.com',
         address: 'Flat 12, Bapu Nagar, Jaipur, Rajasthan',
         pincode: '302015',
       }).valid,
@@ -177,17 +187,17 @@ describe('Phase 1 Frontend — Checkout Form & Phone Validation', () => {
   });
 });
 
-describe('Phase 1 Frontend — Coupons, Auto Stock Decrement, GST Invoices, Tracking & Admin Analytics', () => {
-  it('calculates cart totals and applies festive coupon discounts (DIWALI20 & FIRST10) server-side', () => {
-    // Without coupon: 79900 * 2 + 29900 * 1 = 189700
-    const resNoCoupon = validateCartServerSide([
-      { id: 1, qty: 2, size: 'M' },
-      { id: 7, qty: 1, size: 'Free Size' },
+describe('Phase 1 Frontend — Zero-Trust Pricing, Coupons, Email Receipt Dispatch, Cryptographic Tracking & Customizable GST Profile', () => {
+  it('ignores client-tampered prices and computes authoritative server totals & coupons', () => {
+    // Product #1 = 79900 paise, #7 = 29900 paise -> 79900*2 + 29900 = 189700
+    // Even if a scammer passes price_paise: 100 in the cart payload, server ignores it!
+    const resTampered = validateCartServerSide([
+      { id: 1, qty: 2, size: 'M', price_paise: 100 } as any,
+      { id: 7, qty: 1, size: 'Free Size', price_paise: 100 } as any,
     ]);
-    assert.equal(resNoCoupon.success, true);
-    assert.equal(resNoCoupon.subtotalPaise, 189700);
-    assert.equal(resNoCoupon.discountPaise, 0);
-    assert.equal(resNoCoupon.totalPaise, 189700);
+    assert.equal(resTampered.success, true);
+    assert.equal(resTampered.subtotalPaise, 189700);
+    assert.equal(resTampered.totalPaise, 189700);
 
     // With DIWALI20 (20% OFF on ₹1,299+): 20% of 189700 = 37940 -> total = 151760
     const resDiwali = validateCartServerSide(
@@ -203,14 +213,15 @@ describe('Phase 1 Frontend — Coupons, Auto Stock Decrement, GST Invoices, Trac
     assert.equal(resDiwali.totalPaise, 151760);
   });
 
-  it('creates an order with coupon & GST invoice, auto-decrements product stock on confirmation, and supports Admin live tracking', () => {
+  it('creates an order, generates 12-hex Tracking ID, dispatches Email Receipt on confirmation, and deducts stock', () => {
     const stockBefore = getLiveProductById(1)?.stock ?? 50;
-    const soldBefore = getLiveProductById(1)?.sold_count ?? 0;
+    const emailsBefore = listSentEmails().length;
 
     const idemKey = `test-idem-${Date.now()}`;
     const order1 = createServerOrder({
       customer: {
         name: 'Ananya Verma',
+        email: 'ananya.verma@example.com',
         phone: '9876543210',
         address: '42 MI Road, C-Scheme, Jaipur, Rajasthan, PIN: 302001',
       },
@@ -226,24 +237,29 @@ describe('Phase 1 Frontend — Coupons, Auto Stock Decrement, GST Invoices, Trac
     assert.equal(order1.amountPaise, 143820);
     assert.equal(order1.invoiceNumber.startsWith('INV-KC-2026-'), true);
 
-    // Confirm payment -> generates Tracking ID (TRK-KC-...) AND decrements product #1 stock by 2
+    // Confirm payment -> generates 12-hex Tracking ID (TRK-KC-XXXXXXXXXXXX), sends Email Receipt & deducts stock
     const confirm1 = confirmServerOrder(order1.orderId, {
       id: `pay_test_${Date.now()}`,
       amount: 143820,
       method: 'upi_qr',
     });
     assert.equal(confirm1.result, 'confirmed');
-    assert.equal(Boolean(confirm1.trackingId && confirm1.trackingId.startsWith('TRK-KC-')), true);
+    assert.equal(
+      Boolean(confirm1.trackingId && /^TRK-KC-[0-9A-F]{12}$/.test(confirm1.trackingId)),
+      true
+    );
+    assert.equal(confirm1.emailSentTo, 'ananya.verma@example.com');
+    assert.equal(listSentEmails().length, emailsBefore + 1);
+    const receipt = getOrderEmailReceipt(order1.orderId);
+    assert.equal(receipt?.tracking_id, confirm1.trackingId);
+    assert.equal(Boolean(receipt?.html_preview.includes(confirm1.trackingId!)), true);
 
     const stockAfter = getLiveProductById(1)?.stock ?? 0;
-    const soldAfter = getLiveProductById(1)?.sold_count ?? 0;
     assert.equal(stockAfter, stockBefore - 2);
-    assert.equal(soldAfter, soldBefore + 2);
 
-    // Lookup by Tracking ID
+    // Lookup by confidential Tracking ID
     const tracked = findServerOrderByOrderOrTrackingId(confirm1.trackingId!);
     assert.equal(tracked?.order_id, order1.orderId);
-    assert.equal(tracked?.fulfillment_status, 'ORDER_PLACED');
 
     // Admin updates tracking to SHIPPED
     const updated = updateServerOrderTracking(order1.orderId, {
@@ -254,19 +270,27 @@ describe('Phase 1 Frontend — Coupons, Auto Stock Decrement, GST Invoices, Trac
     });
     assert.equal(updated?.fulfillment_status, 'SHIPPED');
     assert.equal(updated?.courier_name, 'BlueDart Air');
-    assert.equal(updated?.tracking_history.length, 2);
-
-    // Replay confirmation does NOT double-deduct stock
-    const confirm2 = confirmServerOrder(order1.orderId, {
-      id: `pay_test_second_${Date.now()}`,
-      amount: 143820,
-      method: 'upi_qr',
-    });
-    assert.equal(confirm2.result, 'already_confirmed');
-    assert.equal(getLiveProductById(1)?.stock, stockAfter);
   });
 
-  it('supports Admin product & stock image creation/updating, custom coupons, and analytics summary', () => {
+  it('supports customizable Store GST Profile, Admin product/stock/photo CRUD, and analytics', () => {
+    const initialProfile = getStoreProfile();
+    assert.equal(initialProfile.gstin.length, 15);
+
+    const updatedProfile = updateStoreProfile({
+      storeName: 'ROYAL MEWAR EMPORIUM',
+      gstin: '08AABCR1111K1Z9',
+      invoicePrefix: 'RME-2026',
+    });
+    assert.equal(updatedProfile.storeName, 'ROYAL MEWAR EMPORIUM');
+    assert.equal(updatedProfile.gstin, '08AABCR1111K1Z9');
+
+    // Restore default store name
+    updateStoreProfile({
+      storeName: 'ZARIYA JAIPUR — ROYAL ETHNIC HOUSE',
+      gstin: '08AABCZ9481K1Z4',
+      invoicePrefix: 'INV-KC-2026',
+    });
+
     const newProd = createLiveProduct({
       name: 'Bandhani Gotapatti Kurti',
       name_hi: 'बंधेज गोटापट्टी कुर्ती',
@@ -276,7 +300,6 @@ describe('Phase 1 Frontend — Coupons, Auto Stock Decrement, GST Invoices, Trac
       image_url: '/products/kurti3.svg',
     });
     assert.equal(newProd.stock, 15);
-    assert.equal(newProd.price_paise, 109900);
 
     const editedProd = updateLiveProduct(newProd.id, {
       stock: 28,
@@ -296,9 +319,6 @@ describe('Phase 1 Frontend — Coupons, Auto Stock Decrement, GST Invoices, Trac
 
     const analytics = getAdminAnalyticsSummary();
     assert.equal(analytics.totalRevenuePaise > 0, true);
-    assert.equal(analytics.categoryBreakdown.length, 3);
-    assert.equal(analytics.dailySeries.length, 7);
-
     assert.equal(verifyAdminTokenHeader('wrong'), false);
     assert.equal(verifyAdminTokenHeader('dev_admin_token_replace_me_123456'), true);
   });

@@ -1,43 +1,42 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="600" height="600" role="img" aria-label="Lucknowi Chikankari Kurti">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 750" width="600" height="750">
   <defs>
-    <linearGradient id="bg-kurti3" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#f0fdf4"/>
-      <stop offset="100%" stop-color="#dcfce7"/>
+    <linearGradient id="bg_kurti3" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#F4F7F6"/>
+      <stop offset="100%" stop-color="#DCE7E4"/>
+    </linearGradient>
+    <linearGradient id="g_kurti3" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#286675"/>
+      <stop offset="100%" stop-color="#17404A"/>
     </linearGradient>
   </defs>
-  <rect width="600" height="600" fill="url(#bg-kurti3)"/>
-  <circle cx="300" cy="285" r="210" fill="#ffffff" opacity="0.65"/>
-  <!-- Demo Merchandise Transparency Badge -->
-  <rect x="24" y="24" width="180" height="32" rx="16" fill="#1f2937" opacity="0.82"/>
-  <text x="114" y="45" text-anchor="middle" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#ffffff" letter-spacing="0.8">DEMO CATALOG ITEM</text>
-  <rect x="440" y="24" width="136" height="32" rx="16" fill="#0f766e" opacity="0.9"/><text x="508" y="45" text-anchor="middle" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#ffffff">FABRIC DETAIL</text>
+  <rect width="600" height="750" fill="url(#bg_kurti3)"/>
+  <!-- Subtle Mughal Arch Frame -->
+  <rect x="24" y="24" width="552" height="702" rx="28" fill="none" stroke="#C8A24A" stroke-width="1.5" opacity="0.45"/>
+  <path d="M60 110 Q300 35 540 110" fill="none" stroke="#C8A24A" stroke-width="1.2" opacity="0.35"/>
+  <!-- Top Luxury Edition Pill -->
+  <rect x="150" y="48" width="300" height="30" rx="15" fill="#1F4E5B"/>
+  <text x="300" y="68" text-anchor="middle" fill="#FFF8E7" font-family="Georgia, serif" font-size="11" font-weight="bold" letter-spacing="1.5">AWADHI ARTISAN EDITION</text>
   
-      <g transform="scale(1.18) translate(-45, -45)">
-        <!-- Hanger -->
-        <path d="M260 110 Q300 80 340 110" fill="none" stroke="#9ca3af" stroke-width="5" stroke-linecap="round"/>
-        <path d="M300 65 Q315 65 312 80 Q310 90 300 92" fill="none" stroke="#9ca3af" stroke-width="4" stroke-linecap="round"/>
-        <!-- Straight Kurti Silhouette -->
-        <path d="M235 120 L265 110 Q300 130 335 110 L365 120 L415 215 L382 232 L355 170 L362 455 L238 455 L245 170 L218 232 L185 215 Z"
-              fill="#0f766e" stroke="#14b8a6" stroke-width="3"/>
-        <!-- Neckline & Yoke Embroidery -->
-        <path d="M275 115 Q300 155 325 115" fill="none" stroke="#eab308" stroke-width="4"/>
-        <rect x="282" y="135" width="36" height="85" rx="6" fill="#14b8a6" stroke="#eab308" stroke-width="2" stroke-dasharray="4 2"/>
-        <circle cx="300" cy="155" r="4" fill="#eab308"/>
-        <circle cx="300" cy="175" r="4" fill="#eab308"/>
-        <circle cx="300" cy="195" r="4" fill="#eab308"/>
-        <!-- Ethnic Motifs -->
-        <circle cx="268" cy="270" r="8" fill="#eab308" opacity="0.75"/>
-        <circle cx="332" cy="270" r="8" fill="#eab308" opacity="0.75"/>
-        <circle cx="300" cy="320" r="8" fill="#eab308" opacity="0.75"/>
-        <circle cx="265" cy="370" r="8" fill="#eab308" opacity="0.75"/>
-        <circle cx="335" cy="370" r="8" fill="#eab308" opacity="0.75"/>
-        <!-- Zari Hem Border -->
-        <rect x="238" y="425" width="124" height="18" fill="#eab308" opacity="0.88"/>
-        <line x1="238" y1="420" x2="362" y2="420" stroke="#eab308" stroke-width="2" stroke-dasharray="5 3"/>
-      </g>
+      <!-- Soft Studio Drop Shadow -->
+      <ellipse cx="300" cy="585" rx="135" ry="18" fill="#000" opacity="0.12"/>
+      <!-- Garment Silhouette -->
+      <path d="M235 130 L365 130 L435 245 L395 265 L370 195 L370 225 L230 225 L230 195 L205 265 L165 245 Z" fill="url(#g_kurti3)" stroke="#C8A24A" stroke-width="2"/>
+      <path d="M215 220 L195 555 L405 555 L385 220 Z" fill="url(#g_kurti3)" stroke="#C8A24A" stroke-width="2.5"/>
+      <!-- Royal Zari Yoke & Placket -->
+      <path d="M268 130 Q300 175 332 130 L322 255 L278 255 Z" fill="none" stroke="#C8A24A" stroke-width="3"/>
+      <circle cx="300" cy="180" r="4" fill="#C8A24A"/>
+      <circle cx="300" cy="202" r="4" fill="#C8A24A"/>
+      <circle cx="300" cy="224" r="4" fill="#C8A24A"/>
+      <!-- Intricate Hemline Zari Border -->
+      <rect x="196" y="520" width="208" height="24" rx="3" fill="#C8A24A" opacity="0.85"/>
+      <circle cx="240" cy="340" r="6" fill="#C8A24A" opacity="0.55"/>
+      <circle cx="300" cy="310" r="7" fill="#C8A24A" opacity="0.65"/>
+      <circle cx="360" cy="345" r="6" fill="#C8A24A" opacity="0.55"/>
+      <circle cx="265" cy="430" r="6" fill="#C8A24A" opacity="0.55"/>
+      <circle cx="335" cy="430" r="6" fill="#C8A24A" opacity="0.55"/>
     
-  <!-- Bottom Caption Card -->
-  <rect x="40" y="492" width="520" height="80" rx="16" fill="#ffffff" opacity="0.92"/>
-  <text x="300" y="526" text-anchor="middle" font-family="system-ui, sans-serif" font-size="20" font-weight="700" fill="#111827">Lucknowi Chikankari Kurti</text>
-  <text x="300" y="553" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" font-weight="500" fill="#6b7280">Hand-Embroidered Pastel Georgette</text>
+  <!-- Bottom Editorial Caption Card -->
+  <rect x="48" y="615" width="504" height="88" rx="18" fill="#FFFFFF" opacity="0.94" stroke="#C8A24A" stroke-width="1"/>
+  <text x="300" y="652" text-anchor="middle" fill="#1C1917" font-family="Georgia, serif" font-size="21" font-weight="bold">Lucknowi Resham Chikankari Kurta</text>
+  <text x="300" y="680" text-anchor="middle" fill="#78716C" font-family="sans-serif" font-size="13" font-weight="600" letter-spacing="0.5">Hand-Embroidered Modal • Pearl Placket</text>
 </svg>

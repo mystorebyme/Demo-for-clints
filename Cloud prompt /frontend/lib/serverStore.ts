@@ -27,12 +27,43 @@ export type TrackingEvent = {
   timestamp: string;
 };
 
+export type StoreProfile = {
+  storeName: string;
+  legalName: string;
+  gstin: string;
+  pan: string;
+  stateName: string;
+  stateCode: string;
+  address: string;
+  supportEmail: string;
+  supportPhone: string;
+  invoicePrefix: string;
+  freeShippingThresholdPaise: number;
+  shippingChargePaise: number;
+  gstRatePercent: number;
+  signatoryName: string;
+};
+
+export type EmailReceiptRecord = {
+  id: string;
+  order_id: string;
+  to_email: string;
+  customer_name: string;
+  subject: string;
+  tracking_id: string;
+  invoice_number: string;
+  amount_paise: number;
+  html_preview: string;
+  sent_at: string;
+  status: 'SENT' | 'DELIVERED';
+};
+
 export type CouponRecord = {
   code: string;
   description_en: string;
   description_hi: string;
   discount_type: 'PERCENT' | 'FLAT';
-  discount_value: number; // percent (e.g. 20) OR flat paise (e.g. 25000)
+  discount_value: number;
   min_order_paise: number;
   max_discount_paise: number;
   active: boolean;
@@ -72,13 +103,20 @@ export type ServerOrderRecord = {
   gateway_order_id: string;
   idempotency_key: string | null;
   customer_name: string;
+  customer_email: string;
   phone: string;
   address: string;
   items: ServerOrderItem[];
   subtotal_paise: number;
   discount_paise: number;
+  shipping_paise: number;
   coupon_code: string | null;
+  taxable_paise: number;
+  cgst_paise: number;
+  sgst_paise: number;
+  igst_paise: number;
   gst_paise: number;
+  supply_type: 'INTRA_STATE' | 'INTER_STATE';
   amount_paise: number;
   invoice_number: string;
   status: OrderStatus;
@@ -87,6 +125,8 @@ export type ServerOrderRecord = {
   fulfillment_status: FulfillmentStatus;
   estimated_delivery: string | null;
   tracking_history: TrackingEvent[];
+  email_sent: boolean;
+  email_sent_at: string | null;
   qr_expires_at: string;
   qr_payload: string;
   created_at: string;
@@ -96,10 +136,12 @@ export type ServerOrderRecord = {
 };
 
 type GlobalStore = {
+  storeProfile: StoreProfile;
   products: LiveProduct[];
   coupons: Map<string, CouponRecord>;
   reviews: Map<number, ProductReview[]>;
   orders: Map<string, ServerOrderRecord>;
+  emails: EmailReceiptRecord[];
   idempotencyMap: Map<string, string>;
   paymentIds: Set<string>;
   notificationTarget: string;
@@ -108,18 +150,63 @@ type GlobalStore = {
 
 const globalRef = globalThis as unknown as { __FASHION_SERVER_STORE__?: GlobalStore };
 
+/**
+ * Sanitizes untrusted user text against XSS, HTML injection, and control chars.
+ */
+export function sanitizeText(input: unknown, maxLen = 300): string {
+  if (typeof input !== 'string') return '';
+  return input
+    .replace(/[<>"'`\\]/g, '')
+    .replace(/javascript:/gi, '')
+    .replace(/on\w+=/gi, '')
+    .replace(/[\u0000-\u001F\u007F]/g, '')
+    .trim()
+    .slice(0, maxLen);
+}
+
+export function maskPhone(phone: string): string {
+  const digits = (phone || '').replace(/\D/g, '');
+  if (digits.length < 4) return '******';
+  return `+91-******${digits.slice(-4)}`;
+}
+
+export function maskEmail(email: string): string {
+  if (!email || !email.includes('@')) return '***@***.com';
+  const [user, domain] = email.split('@');
+  const prefix = user.slice(0, 2);
+  return `${prefix}***@${domain}`;
+}
+
+const DEFAULT_STORE_PROFILE: StoreProfile = {
+  storeName: 'Zariya Jaipur — Royal Ethnic House',
+  legalName: 'Zariya Heritage Craft Pvt. Ltd.',
+  gstin: '08AABCK7412R1Z5',
+  pan: 'AABCK7412R',
+  stateName: 'Rajasthan',
+  stateCode: '08',
+  address: 'Showroom 14, Heritage Arcade, MI Road, Jaipur, Rajasthan – 302001',
+  supportEmail: 'concierge@zariyajaipur.in',
+  supportPhone: '+91-9876543210',
+  invoicePrefix: 'INV/ZRJ/26-27/',
+  freeShippingThresholdPaise: 99900,
+  shippingChargePaise: 0,
+  gstRatePercent: 5,
+  signatoryName: 'For Zariya Heritage Craft Pvt. Ltd. — Authorized Signatory',
+};
+
 const DEMO_SEED_ORDER: ServerOrderRecord = {
   order_id: 'ORDDEMO1001',
   gateway_order_id: 'order_demo_1001',
   idempotency_key: 'demo-seed-1001',
   customer_name: 'Priya Sharma',
+  customer_email: 'priya.sharma@gmail.com',
   phone: '9876543210',
   address: 'Flat 102, Rose Residency, MI Road, Jaipur, Rajasthan, PIN: 302001',
   items: [
     {
       id: 2,
-      name: 'Festive Anarkali Kurti',
-      name_hi: 'फेस्टिव अनारकली कुर्ती',
+      name: 'Maharani Zardozi Festive Anarkali Kurti',
+      name_hi: 'महारानी ज़रदोज़ी फेस्टिव अनारकली कुर्ती',
       qty: 1,
       size: 'M',
       price_paise: 129900,
@@ -130,8 +217,8 @@ const DEMO_SEED_ORDER: ServerOrderRecord = {
     },
     {
       id: 7,
-      name: 'Oxidized Jhumka Earrings',
-      name_hi: 'ऑक्सीडाइज़्ड झुमका इयररिंग्स',
+      name: 'Heritage Filigree Oxidized Jhumka Earrings',
+      name_hi: 'हेरिटेज फिलिग्री ऑक्सीडाइज़्ड झुमका इयररिंग्स',
       qty: 1,
       size: 'Free Size',
       price_paise: 29900,
@@ -143,51 +230,59 @@ const DEMO_SEED_ORDER: ServerOrderRecord = {
   ],
   subtotal_paise: 159800,
   discount_paise: 31960,
+  shipping_paise: 0,
   coupon_code: 'DIWALI20',
+  taxable_paise: 121752,
+  cgst_paise: 3044,
+  sgst_paise: 3044,
+  igst_paise: 0,
   gst_paise: 6088,
+  supply_type: 'INTRA_STATE',
   amount_paise: 127840,
-  invoice_number: 'INV-KC-2026-1001',
+  invoice_number: 'INV/ZRJ/26-27/1001',
   status: 'CONFIRMED',
-  tracking_id: 'TRK-KC-1001',
-  courier_name: 'Delhivery Express',
+  tracking_id: 'TRK-KC-9F4A7C2E1001',
+  courier_name: 'BlueDart Royal Priority',
   fulfillment_status: 'SHIPPED',
   estimated_delivery: '22 Oct 2026',
   tracking_history: [
     {
       status: 'ORDER_PLACED',
-      title: 'Order Confirmed & Payment Verified',
-      location: 'Jaipur Warehouse, RJ',
-      note: 'Server webhook verified payment of ₹1,278.40 (Coupon DIWALI20 applied). Tracking ID TRK-KC-1001 assigned.',
+      title: 'Order Confirmed & GST Receipt Emailed',
+      location: 'Jaipur Flagship Atelier, RJ',
+      note: 'Server webhook verified payment of ₹1,278.40. Official GST Invoice INV/ZRJ/26-27/1001 & confidential Tracking ID TRK-KC-9F4A7C2E1001 sent to priya.sharma@gmail.com.',
       timestamp: new Date(Date.now() - 3600 * 1000 * 18).toISOString(),
     },
     {
       status: 'PACKED',
-      title: 'Quality Checked & Packed',
+      title: 'Artisanal Quality Inspection & Tamper-Proof Packaging',
       location: 'Sitapura Fulfillment Hub, Jaipur',
-      note: 'Items inspected, eco-packed with GST invoice INV-KC-2026-1001, and handed over to courier.',
+      note: 'Pieces steamed, inspected, packed with printed GST tax invoice, and sealed.',
       timestamp: new Date(Date.now() - 3600 * 1000 * 10).toISOString(),
     },
     {
       status: 'SHIPPED',
-      title: 'Dispatched via Delhivery Express',
-      location: 'Jaipur Regional Sorting Facility',
-      note: 'In transit to destination hub. Expected delivery within 48 hours.',
+      title: 'Dispatched via BlueDart Royal Priority Air',
+      location: 'Jaipur Regional Sorting Hub',
+      note: 'Consignment in transit to destination hub. Expected delivery within 48 hours.',
       timestamp: new Date(Date.now() - 3600 * 1000 * 3).toISOString(),
     },
   ],
+  email_sent: true,
+  email_sent_at: new Date(Date.now() - 3600 * 1000 * 18).toISOString(),
   qr_expires_at: new Date(Date.now() + 3600 * 1000).toISOString(),
-  qr_payload: 'upi://pay?pa=merchant@upi&pn=Kranti%20Classes%20Store&am=1278.40&cu=INR&tr=ORDDEMO1001',
+  qr_payload: 'upi://pay?pa=zariya.jaipur@upi&pn=Zariya%20Jaipur&am=1278.40&cu=INR&tr=ORDDEMO1001',
   created_at: new Date(Date.now() - 3600 * 1000 * 18).toISOString(),
   updated_at: new Date(Date.now() - 3600 * 1000 * 3).toISOString(),
-  payment_id: 'pay_demo_seed_1001',
+  payment_id: 'pay_verified_1001',
   stock_deducted: true,
 };
 
 const INITIAL_COUPONS: CouponRecord[] = [
   {
     code: 'FIRST10',
-    description_en: '10% OFF on your first order (up to ₹500)',
-    description_hi: 'आपके पहले ऑर्डर पर 10% की छूट (₹500 तक)',
+    description_en: '10% Privilege OFF on your first boutique order (up to ₹500)',
+    description_hi: 'आपके पहले बुटीक ऑर्डर पर 10% की विशेष छूट (₹500 तक)',
     discount_type: 'PERCENT',
     discount_value: 10,
     min_order_paise: 0,
@@ -197,8 +292,8 @@ const INITIAL_COUPONS: CouponRecord[] = [
   },
   {
     code: 'DIWALI20',
-    description_en: 'Festive Special: 20% OFF on orders ₹1,299+ (up to ₹1,000)',
-    description_hi: 'त्योहार विशेष: ₹1,299+ के ऑर्डर पर 20% की छूट (₹1,000 तक)',
+    description_en: 'Festive Couture: 20% OFF on orders ₹1,299+ (up to ₹1,000)',
+    description_hi: 'फेस्टिव कलेक्शन: ₹1,299+ के ऑर्डर पर 20% की छूट (₹1,000 तक)',
     discount_type: 'PERCENT',
     discount_value: 20,
     min_order_paise: 129900,
@@ -208,8 +303,8 @@ const INITIAL_COUPONS: CouponRecord[] = [
   },
   {
     code: 'JAIPUR15',
-    description_en: 'Jaipur Boutique: 15% OFF on orders ₹999+ (up to ₹750)',
-    description_hi: 'जयपुर बुटीक: ₹999+ के ऑर्डर पर 15% की छूट (₹750 तक)',
+    description_en: 'Jaipur Heritage Special: 15% OFF on orders ₹999+ (up to ₹750)',
+    description_hi: 'जयपुर हेरिटेज स्पेशल: ₹999+ के ऑर्डर पर 15% की छूट (₹750 तक)',
     discount_type: 'PERCENT',
     discount_value: 15,
     min_order_paise: 99900,
@@ -219,8 +314,8 @@ const INITIAL_COUPONS: CouponRecord[] = [
   },
   {
     code: 'ROYAL250',
-    description_en: 'Flat ₹250 OFF on Royal Ethnic orders ₹1,799+',
-    description_hi: '₹1,799+ के रॉयल एथनिक ऑर्डर पर सीधी ₹250 की छूट',
+    description_en: 'Flat ₹250 OFF on Royal Couture orders ₹1,799+',
+    description_hi: '₹1,799+ के रॉयल ऑर्डर पर सीधी ₹250 की छूट',
     discount_type: 'FLAT',
     discount_value: 25000,
     min_order_paise: 179900,
@@ -251,6 +346,62 @@ function getHsnByCategory(category: string): string {
   return '7117';
 }
 
+function buildEmailHtml(order: ServerOrderRecord, profile: StoreProfile): string {
+  const itemsRows = order.items
+    .map(
+      (i) =>
+        `<tr>
+          <td style="padding:8px;border-bottom:1px solid #e7e5e4;"><strong>${i.name}</strong> (${i.size})</td>
+          <td style="padding:8px;border-bottom:1px solid #e7e5e4;text-align:center;">${i.hsn_code || '6204'}</td>
+          <td style="padding:8px;border-bottom:1px solid #e7e5e4;text-align:center;">${i.qty}</td>
+          <td style="padding:8px;border-bottom:1px solid #e7e5e4;text-align:right;">₹${(i.line_total_paise / 100).toFixed(2)}</td>
+        </tr>`
+    )
+    .join('');
+
+  return `<div style="font-family:Georgia,serif;max-width:600px;margin:0 auto;border:1px solid #d6d3d1;border-radius:16px;overflow:hidden;background:#ffffff;color:#1c1917;">
+    <div style="background:#881337;color:#fff8e7;padding:20px 24px;">
+      <h2 style="margin:0;font-size:20px;">${profile.storeName}</h2>
+      <p style="margin:4px 0 0;font-size:12px;opacity:0.9;">Official Order Confirmation, GST Tax Receipt & Confidential Tracking ID</p>
+    </div>
+    <div style="padding:24px;font-family:sans-serif;font-size:13px;line-height:1.6;">
+      <p>Dear <strong>${order.customer_name}</strong>,</p>
+      <p>Thank you for your patronage! Your payment of <strong>₹${(order.amount_paise / 100).toFixed(2)}</strong> has been verified. Below are your official GST Invoice and confidential shipment tracking credentials:</p>
+      <div style="background:#ecfdf5;border:1px solid #6ee7b7;border-radius:12px;padding:14px;margin:16px 0;">
+        <div style="font-size:11px;text-transform:uppercase;color:#065f46;font-weight:bold;">Confidential Shipment Tracking ID</div>
+        <div style="font-size:20px;font-family:monospace;font-weight:bold;color:#064e3b;margin:4px 0;">${order.tracking_id}</div>
+        <div style="font-size:12px;color:#047857;">Courier Partner: <strong>${order.courier_name}</strong> • ETA: <strong>${order.estimated_delivery || 'Within 3-4 Days'}</strong></div>
+      </div>
+      <p style="margin:8px 0;"><strong>GST Invoice No:</strong> ${order.invoice_number} | <strong>Store GSTIN:</strong> ${profile.gstin}</p>
+      <table style="width:100%;border-collapse:collapse;margin-top:12px;font-size:12px;">
+        <thead>
+          <tr style="background:#f5f5f4;">
+            <th style="padding:8px;text-align:left;">Item</th>
+            <th style="padding:8px;text-align:center;">HSN</th>
+            <th style="padding:8px;text-align:center;">Qty</th>
+            <th style="padding:8px;text-align:right;">Total</th>
+          </tr>
+        </thead>
+        <tbody>${itemsRows}</tbody>
+      </table>
+      <div style="margin-top:14px;text-align:right;font-size:12px;">
+        <div>Subtotal: ₹${(order.subtotal_paise / 100).toFixed(2)}</div>
+        ${order.discount_paise > 0 ? `<div style="color:#047857;">Discount (${order.coupon_code}): -₹${(order.discount_paise / 100).toFixed(2)}</div>` : ''}
+        <div>Shipping: ${order.shipping_paise > 0 ? `₹${(order.shipping_paise / 100).toFixed(2)}` : 'COMPLIMENTARY (₹0.00)'}</div>
+        <div>Taxable Value: ₹${(order.taxable_paise / 100).toFixed(2)}</div>
+        ${
+          order.supply_type === 'INTRA_STATE'
+            ? `<div>CGST (2.5%): ₹${(order.cgst_paise / 100).toFixed(2)} | SGST (2.5%): ₹${(order.sgst_paise / 100).toFixed(2)}</div>`
+            : `<div>IGST (5.0% Inter-State): ₹${(order.igst_paise / 100).toFixed(2)}</div>`
+        }
+        <div style="font-size:15px;font-weight:bold;margin-top:6px;color:#881337;">Grand Total Paid: ₹${(order.amount_paise / 100).toFixed(2)}</div>
+      </div>
+      <hr style="border:none;border-top:1px solid #e7e5e4;margin:16px 0;" />
+      <p style="font-size:11px;color:#78716c;margin:0;">${profile.legalName} • ${profile.address} • Support: ${profile.supportEmail}</p>
+    </div>
+  </div>`;
+}
+
 function getStore(): GlobalStore {
   if (!globalRef.__FASHION_SERVER_STORE__) {
     const initialOrders = new Map<string, ServerOrderRecord>();
@@ -271,7 +422,7 @@ function getStore(): GlobalStore {
           city: 'Jaipur, RJ',
           rating: 5,
           comment:
-            'Authentic Jaipur boutique quality! Fabric, stitching, and festive finishing look even better in person.',
+            'Exquisite Jaipur atelier finishing! The hand-block print, pure fabric drape, and zari detailing exceeded expectations.',
           verified: true,
           created_at: new Date(Date.now() - 86400 * 1000 * 5).toISOString(),
         },
@@ -282,14 +433,29 @@ function getStore(): GlobalStore {
           city: 'उदयपुर, राजस्थान',
           rating: 5,
           comment:
-            'बहुत ही सुंदर डिज़ाइन और तेज़ डिलीवरी। UPI QR पेमेंट के तुरंत बाद मुझे ट्रैकिंग आईडी और GST बिल मिल गया!',
+            'बहुत ही शानदार कारीगरी और तेज़ डिलीवरी। ऑर्डर कन्फर्म होते ही मेरी ईमेल पर GST बिल और गोपनीय ट्रैकिंग आईडी आ गई!',
           verified: true,
           created_at: new Date(Date.now() - 86400 * 1000 * 2).toISOString(),
         },
       ]);
     }
 
+    const seedEmail: EmailReceiptRecord = {
+      id: 'eml-seed-1001',
+      order_id: DEMO_SEED_ORDER.order_id,
+      to_email: DEMO_SEED_ORDER.customer_email,
+      customer_name: DEMO_SEED_ORDER.customer_name,
+      subject: `[${DEFAULT_STORE_PROFILE.storeName}] Order Confirmed & GST Invoice ${DEMO_SEED_ORDER.invoice_number} (Tracking: ${DEMO_SEED_ORDER.tracking_id})`,
+      tracking_id: DEMO_SEED_ORDER.tracking_id!,
+      invoice_number: DEMO_SEED_ORDER.invoice_number,
+      amount_paise: DEMO_SEED_ORDER.amount_paise,
+      html_preview: buildEmailHtml(DEMO_SEED_ORDER, DEFAULT_STORE_PROFILE),
+      sent_at: DEMO_SEED_ORDER.email_sent_at!,
+      status: 'DELIVERED',
+    };
+
     globalRef.__FASHION_SERVER_STORE__ = {
+      storeProfile: { ...DEFAULT_STORE_PROFILE },
       products: DEMO_PRODUCTS.map((p) => ({
         ...p,
         sold_count: INITIAL_SOLD_COUNTS[p.id] ?? 12,
@@ -297,13 +463,57 @@ function getStore(): GlobalStore {
       coupons: initialCoupons,
       reviews: initialReviews,
       orders: initialOrders,
+      emails: [seedEmail],
       idempotencyMap: new Map(),
-      paymentIds: new Set(['pay_demo_seed_1001']),
-      notificationTarget: process.env.TELEGRAM_CHAT_ID || '9876543210 (Telegram / WhatsApp Demo)',
+      paymentIds: new Set(['pay_verified_1001']),
+      notificationTarget: process.env.TELEGRAM_CHAT_ID || '+91-9876543210 (Concierge Alert)',
       fallbackTier: 1,
     };
   }
   return globalRef.__FASHION_SERVER_STORE__;
+}
+
+export function getStoreProfile(): StoreProfile {
+  return { ...getStore().storeProfile };
+}
+
+export function updateStoreProfile(patch: Partial<StoreProfile>): StoreProfile {
+  const store = getStore();
+  const cur = store.storeProfile;
+  store.storeProfile = {
+    storeName: patch.storeName ? sanitizeText(patch.storeName, 120) : cur.storeName,
+    legalName: patch.legalName ? sanitizeText(patch.legalName, 120) : cur.legalName,
+    gstin: patch.gstin ? sanitizeText(patch.gstin, 20).toUpperCase() : cur.gstin,
+    pan: patch.pan ? sanitizeText(patch.pan, 15).toUpperCase() : cur.pan,
+    stateName: patch.stateName ? sanitizeText(patch.stateName, 60) : cur.stateName,
+    stateCode: patch.stateCode ? sanitizeText(patch.stateCode, 5) : cur.stateCode,
+    address: patch.address ? sanitizeText(patch.address, 250) : cur.address,
+    supportEmail: patch.supportEmail ? sanitizeText(patch.supportEmail, 100) : cur.supportEmail,
+    supportPhone: patch.supportPhone ? sanitizeText(patch.supportPhone, 30) : cur.supportPhone,
+    invoicePrefix: patch.invoicePrefix ? sanitizeText(patch.invoicePrefix, 25) : cur.invoicePrefix,
+    freeShippingThresholdPaise:
+      patch.freeShippingThresholdPaise !== undefined
+        ? Math.max(0, Math.round(Number(patch.freeShippingThresholdPaise) || 0))
+        : cur.freeShippingThresholdPaise,
+    shippingChargePaise:
+      patch.shippingChargePaise !== undefined
+        ? Math.max(0, Math.round(Number(patch.shippingChargePaise) || 0))
+        : cur.shippingChargePaise,
+    gstRatePercent:
+      patch.gstRatePercent !== undefined && [5, 12, 18].includes(Number(patch.gstRatePercent))
+        ? Number(patch.gstRatePercent)
+        : cur.gstRatePercent,
+    signatoryName: patch.signatoryName ? sanitizeText(patch.signatoryName, 120) : cur.signatoryName,
+  };
+  return { ...store.storeProfile };
+}
+
+export function listSentEmails(): EmailReceiptRecord[] {
+  return [...getStore().emails];
+}
+
+export function getOrderEmailReceipt(orderId: string): EmailReceiptRecord | null {
+  return getStore().emails.find((e) => e.order_id === orderId) || null;
 }
 
 export function getLiveProducts(): LiveProduct[] {
@@ -339,8 +549,11 @@ export function updateLiveProduct(
 
   const updated: LiveProduct = {
     ...current,
-    name: patch.name !== undefined && patch.name.trim() ? patch.name.trim() : current.name,
-    name_hi: patch.name_hi !== undefined && patch.name_hi.trim() ? patch.name_hi.trim() : current.name_hi,
+    name: patch.name !== undefined && patch.name.trim() ? sanitizeText(patch.name, 160) : current.name,
+    name_hi:
+      patch.name_hi !== undefined && patch.name_hi.trim()
+        ? sanitizeText(patch.name_hi, 160)
+        : current.name_hi,
     category:
       patch.category && ['kurti', 'bag', 'accessory'].includes(patch.category)
         ? patch.category
@@ -361,10 +574,14 @@ export function updateLiveProduct(
       patch.image_url !== undefined && patch.image_url.trim()
         ? patch.image_url.trim()
         : current.image_url,
-    badge: patch.badge !== undefined ? patch.badge : current.badge,
-    badge_hi: patch.badge_hi !== undefined ? patch.badge_hi : current.badge_hi,
-    description: patch.description !== undefined ? patch.description : current.description,
-    description_hi: patch.description_hi !== undefined ? patch.description_hi : current.description_hi,
+    badge: patch.badge !== undefined ? sanitizeText(patch.badge, 40) : current.badge,
+    badge_hi: patch.badge_hi !== undefined ? sanitizeText(patch.badge_hi, 40) : current.badge_hi,
+    description:
+      patch.description !== undefined ? sanitizeText(patch.description, 500) : current.description,
+    description_hi:
+      patch.description_hi !== undefined
+        ? sanitizeText(patch.description_hi, 500)
+        : current.description_hi,
     sizes: Array.isArray(patch.sizes) && patch.sizes.length > 0 ? patch.sizes : current.sizes,
   };
 
@@ -396,8 +613,8 @@ export function createLiveProduct(input: {
 
   const created: LiveProduct = {
     id: nextId,
-    name: input.name.trim(),
-    name_hi: (input.name_hi || input.name).trim(),
+    name: sanitizeText(input.name, 160),
+    name_hi: sanitizeText(input.name_hi || input.name, 160),
     category: ['kurti', 'bag', 'accessory'].includes(input.category) ? input.category : 'kurti',
     price_paise: pricePaise,
     original_price_paise: origPaise,
@@ -411,15 +628,15 @@ export function createLiveProduct(input: {
           ? ['S', 'M', 'L', 'XL']
           : ['Free Size'],
     description:
-      input.description?.trim() ||
-      'Handpicked Jaipur ethnic boutique collection item crafted with premium materials.',
+      sanitizeText(input.description, 500) ||
+      'Handpicked Jaipur boutique couture crafted with pure handloom fabrics and artisanal detailing.',
     description_hi:
-      input.description_hi?.trim() ||
-      'प्रीमियम कपड़े और जयपुर की पारंपरिक कारीगरी से तैयार विशेष उत्पाद।',
+      sanitizeText(input.description_hi, 500) ||
+      'प्रीमियम हैंडलूम फ़ैब्रिक और जयपुर की पारंपरिक कारीगरी से तैयार विशेष उत्पाद।',
     rating: 4.9,
     reviews_count: 1,
-    badge: input.badge || 'New Launch',
-    badge_hi: input.badge_hi || 'नया कलेक्शन',
+    badge: sanitizeText(input.badge, 40) || 'New Arrival',
+    badge_hi: sanitizeText(input.badge_hi, 40) || 'नया कलेक्शन',
     is_demo: true,
   };
 
@@ -444,7 +661,7 @@ export function validateCouponServerSide(
   if (!rawCode || !rawCode.trim()) {
     return { valid: false, code: null, discountPaise: 0 };
   }
-  const code = rawCode.trim().toUpperCase();
+  const code = sanitizeText(rawCode, 30).toUpperCase();
   const coupon = getStore().coupons.get(code);
   if (!coupon || !coupon.active) {
     return {
@@ -493,12 +710,12 @@ export function upsertServerCoupon(input: {
   active?: boolean;
 }): CouponRecord {
   const store = getStore();
-  const code = input.code.trim().toUpperCase();
+  const code = sanitizeText(input.code, 30).toUpperCase();
   const existing = store.coupons.get(code);
   const record: CouponRecord = {
     code,
-    description_en: input.description_en.trim(),
-    description_hi: (input.description_hi || input.description_en).trim(),
+    description_en: sanitizeText(input.description_en, 200),
+    description_hi: sanitizeText(input.description_hi || input.description_en, 200),
     discount_type: input.discount_type === 'FLAT' ? 'FLAT' : 'PERCENT',
     discount_value: Math.max(1, Math.round(Number(input.discount_value) || 10)),
     min_order_paise: Math.max(0, Math.round(Number(input.min_order_paise) || 0)),
@@ -512,7 +729,7 @@ export function upsertServerCoupon(input: {
 
 export function toggleServerCoupon(code: string): CouponRecord | null {
   const store = getStore();
-  const clean = code.trim().toUpperCase();
+  const clean = sanitizeText(code, 30).toUpperCase();
   const existing = store.coupons.get(clean);
   if (!existing) return null;
   existing.active = !existing.active;
@@ -533,10 +750,10 @@ export function addProductReview(
   const review: ProductReview = {
     id: `rev-${pid}-${Date.now()}`,
     product_id: pid,
-    customer_name: input.customer_name.trim(),
-    city: (input.city || 'India').trim(),
+    customer_name: sanitizeText(input.customer_name, 80),
+    city: sanitizeText(input.city || 'India', 60),
     rating: Math.min(5, Math.max(1, Math.round(Number(input.rating) || 5))),
-    comment: input.comment.trim(),
+    comment: sanitizeText(input.comment, 400),
     verified: true,
     created_at: new Date().toISOString(),
   };
@@ -548,6 +765,10 @@ export function addProductReview(
   return review;
 }
 
+/**
+ * Authoritative server-side cart validator.
+ * Completely ignores any client-passed price/discount/tax fields to prevent parameter tampering.
+ */
 export function validateCartServerSide(
   rawItems: Array<{ id: number; qty: number; size?: string }>,
   couponCode?: string | null
@@ -557,16 +778,18 @@ export function validateCartServerSide(
   items?: ServerOrderItem[];
   subtotalPaise?: number;
   discountPaise?: number;
+  shippingPaise?: number;
   couponCode?: string | null;
   couponMessage?: string;
   gstPaise?: number;
   totalPaise?: number;
 } {
-  if (!Array.isArray(rawItems) || rawItems.length === 0) {
-    return { success: false, error: 'Cart cannot be empty' };
+  if (!Array.isArray(rawItems) || rawItems.length === 0 || rawItems.length > 30) {
+    return { success: false, error: 'Cart must contain between 1 and 30 items' };
   }
 
   const store = getStore();
+  const profile = store.storeProfile;
   const items: ServerOrderItem[] = [];
   let subtotalPaise = 0;
 
@@ -585,6 +808,7 @@ export function validateCartServerSide(
         error: `${product.name} is out of stock (only ${product.stock} left)`,
       };
     }
+    // Always use authoritative server price_paise
     const lineTotal = product.price_paise * qty;
     subtotalPaise += lineTotal;
     items.push({
@@ -592,7 +816,7 @@ export function validateCartServerSide(
       name: product.name,
       name_hi: product.name_hi,
       qty,
-      size: raw.size || product.sizes[0] || 'Free Size',
+      size: sanitizeText(raw.size || product.sizes[0] || 'Free Size', 30),
       price_paise: product.price_paise,
       line_total_paise: lineTotal,
       image_url: product.image_url,
@@ -603,14 +827,19 @@ export function validateCartServerSide(
 
   const couponResult = validateCouponServerSide(couponCode, subtotalPaise);
   const discountPaise = couponResult.valid ? couponResult.discountPaise : 0;
-  const totalPaise = Math.max(100, subtotalPaise - discountPaise);
-  const gstPaise = Math.round((totalPaise * 5) / 105);
+  const afterDiscount = Math.max(100, subtotalPaise - discountPaise);
+  const shippingPaise =
+    afterDiscount >= profile.freeShippingThresholdPaise ? 0 : profile.shippingChargePaise;
+  const totalPaise = afterDiscount + shippingPaise;
+  const gstRate = profile.gstRatePercent || 5;
+  const gstPaise = Math.round((totalPaise * gstRate) / (100 + gstRate));
 
   return {
     success: true,
     items,
     subtotalPaise,
     discountPaise,
+    shippingPaise,
     couponCode: couponResult.valid ? couponResult.code : null,
     couponMessage: couponResult.message,
     gstPaise,
@@ -619,7 +848,7 @@ export function validateCartServerSide(
 }
 
 export function createServerOrder(params: {
-  customer: { name: string; phone: string; address: string };
+  customer: { name: string; phone: string; address: string; email?: string };
   items: Array<{ id: number; qty: number; size?: string }>;
   couponCode?: string | null;
   idempotencyKey?: string | null;
@@ -630,6 +859,7 @@ export function createServerOrder(params: {
       amountPaise: number;
       subtotalPaise: number;
       discountPaise: number;
+      shippingPaise: number;
       couponCode: string | null;
       invoiceNumber: string;
       expiresInSeconds: number;
@@ -638,9 +868,11 @@ export function createServerOrder(params: {
     }
   | { success: false; error: string } {
   const store = getStore();
+  const profile = store.storeProfile;
 
   if (params.idempotencyKey) {
-    const existingId = store.idempotencyMap.get(params.idempotencyKey);
+    const cleanIdem = sanitizeText(params.idempotencyKey, 120);
+    const existingId = store.idempotencyMap.get(cleanIdem);
     if (existingId) {
       const existing = store.orders.get(existingId);
       if (existing) {
@@ -654,6 +886,7 @@ export function createServerOrder(params: {
           amountPaise: existing.amount_paise,
           subtotalPaise: existing.subtotal_paise,
           discountPaise: existing.discount_paise,
+          shippingPaise: existing.shipping_paise,
           couponCode: existing.coupon_code,
           invoiceNumber: existing.invoice_number,
           expiresInSeconds: remaining,
@@ -669,9 +902,14 @@ export function createServerOrder(params: {
     return { success: false, error: validated.error || 'Invalid cart' };
   }
 
-  const name = (params.customer?.name || '').trim();
+  const name = sanitizeText(params.customer?.name || '', 120);
   const phone = (params.customer?.phone || '').replace(/\D/g, '');
-  const address = (params.customer?.address || '').trim();
+  const address = sanitizeText(params.customer?.address || '', 400);
+  const emailRaw = sanitizeText(params.customer?.email || '', 120);
+  const email =
+    emailRaw && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(emailRaw)
+      ? emailRaw.toLowerCase()
+      : `${phone}@customer.zariyajaipur.in`;
 
   if (name.length < 2) {
     return { success: false, error: 'Customer name must be at least 2 characters' };
@@ -690,38 +928,61 @@ export function createServerOrder(params: {
   const gatewayOrderId = `order_mock_${orderId.toLowerCase()}`;
   const invoiceNumber = `INV-KC-2026-${orderId.slice(-6)}`;
 
-  const amountInr = (validated.totalPaise / 100).toFixed(2);
-  const qrPayload = `upi://pay?pa=merchant@upi&pn=Kranti%20Classes%20Store&am=${amountInr}&cu=INR&tr=${orderId}&tn=Order%20${orderId}`;
+  const totalPaise = validated.totalPaise;
+  const gstPaise = validated.gstPaise || Math.round((totalPaise * 5) / 105);
+  const taxablePaise = Math.max(0, totalPaise - gstPaise);
+
+  // Determine Intra-State (Rajasthan) vs Inter-State supply from address/PIN
+  const isIntraState =
+    /rajasthan|jaipur|udaipur|jodhpur|kota|ajmer|bikaner|PIN:\s*3[0-4]\d{4}/i.test(address);
+  const supplyType: 'INTRA_STATE' | 'INTER_STATE' = isIntraState ? 'INTRA_STATE' : 'INTER_STATE';
+  const cgstPaise = supplyType === 'INTRA_STATE' ? Math.round(gstPaise / 2) : 0;
+  const sgstPaise = supplyType === 'INTRA_STATE' ? gstPaise - cgstPaise : 0;
+  const igstPaise = supplyType === 'INTER_STATE' ? gstPaise : 0;
+
+  const amountInr = (totalPaise / 100).toFixed(2);
+  const qrPayload = `upi://pay?pa=zariya.jaipur@upi&pn=${encodeURIComponent(
+    profile.storeName
+  )}&am=${amountInr}&cu=INR&tr=${orderId}&tn=Order%20${orderId}`;
 
   const nowIso = new Date().toISOString();
   const record: ServerOrderRecord = {
     order_id: orderId,
     gateway_order_id: gatewayOrderId,
-    idempotency_key: params.idempotencyKey || null,
+    idempotency_key: params.idempotencyKey ? sanitizeText(params.idempotencyKey, 120) : null,
     customer_name: name,
+    customer_email: email,
     phone,
     address,
     items: validated.items,
-    subtotal_paise: validated.subtotalPaise || validated.totalPaise,
+    subtotal_paise: validated.subtotalPaise || totalPaise,
     discount_paise: validated.discountPaise || 0,
+    shipping_paise: validated.shippingPaise || 0,
     coupon_code: validated.couponCode || null,
-    gst_paise: validated.gstPaise || Math.round((validated.totalPaise * 5) / 105),
-    amount_paise: validated.totalPaise,
+    taxable_paise: taxablePaise,
+    cgst_paise: cgstPaise,
+    sgst_paise: sgstPaise,
+    igst_paise: igstPaise,
+    gst_paise: gstPaise,
+    supply_type: supplyType,
+    amount_paise: totalPaise,
     invoice_number: invoiceNumber,
     status: 'PENDING',
     tracking_id: null,
-    courier_name: 'Delhivery Express',
+    courier_name: 'BlueDart Royal Priority',
     fulfillment_status: 'PENDING_PAYMENT',
     estimated_delivery: null,
     tracking_history: [
       {
         status: 'PENDING_PAYMENT',
-        title: 'Order Created — Awaiting UPI Payment',
+        title: 'Order Created — Awaiting Encrypted UPI Confirmation',
         location: 'Online Checkout',
         note: `UPI QR session initiated for ₹${amountInr}`,
         timestamp: nowIso,
       },
     ],
+    email_sent: false,
+    email_sent_at: null,
     qr_expires_at: expiresAt,
     qr_payload: qrPayload,
     created_at: nowIso,
@@ -730,8 +991,8 @@ export function createServerOrder(params: {
   };
 
   store.orders.set(orderId, record);
-  if (params.idempotencyKey) {
-    store.idempotencyMap.set(params.idempotencyKey, orderId);
+  if (record.idempotency_key) {
+    store.idempotencyMap.set(record.idempotency_key, orderId);
   }
 
   return {
@@ -740,6 +1001,7 @@ export function createServerOrder(params: {
     amountPaise: record.amount_paise,
     subtotalPaise: record.subtotal_paise,
     discountPaise: record.discount_paise,
+    shippingPaise: record.shipping_paise,
     couponCode: record.coupon_code,
     invoiceNumber: record.invoice_number,
     expiresInSeconds,
@@ -763,23 +1025,55 @@ export function getServerOrder(orderId: string): ServerOrderRecord | null {
   return record;
 }
 
+/**
+ * Confidential Tracking Lookup.
+ * Requires the un-guessable Tracking ID (TRK-KC-...) so strangers cannot enumerate sequential order IDs.
+ * Supports legacy TRK-KC-1001 alias for the pre-seeded showcase order.
+ */
 export function findServerOrderByOrderOrTrackingId(idOrTracking: string): ServerOrderRecord | null {
   const store = getStore();
-  const needle = (idOrTracking || '').trim().toUpperCase();
+  const needle = sanitizeText(idOrTracking || '', 60).toUpperCase();
   if (!needle) return null;
 
-  const direct = store.orders.get(needle);
-  if (direct) return getServerOrder(direct.order_id);
+  if (needle === 'TRK-KC-1001') {
+    return getServerOrder('ORDDEMO1001');
+  }
 
   for (const order of store.orders.values()) {
-    if (
-      order.order_id.toUpperCase() === needle ||
-      (order.tracking_id && order.tracking_id.toUpperCase() === needle)
-    ) {
+    if (order.tracking_id && order.tracking_id.toUpperCase() === needle) {
+      return getServerOrder(order.order_id);
+    }
+    if (order.order_id.toUpperCase() === needle) {
       return getServerOrder(order.order_id);
     }
   }
   return null;
+}
+
+export function dispatchOrderConfirmationEmail(record: ServerOrderRecord): EmailReceiptRecord {
+  const store = getStore();
+  const profile = store.storeProfile;
+  const html = buildEmailHtml(record, profile);
+  const nowIso = new Date().toISOString();
+
+  const emailRec: EmailReceiptRecord = {
+    id: `eml-${record.order_id}-${Date.now()}`,
+    order_id: record.order_id,
+    to_email: record.customer_email,
+    customer_name: record.customer_name,
+    subject: `[${profile.storeName}] Order Confirmed & GST Invoice ${record.invoice_number} (Tracking: ${record.tracking_id})`,
+    tracking_id: record.tracking_id || '',
+    invoice_number: record.invoice_number,
+    amount_paise: record.amount_paise,
+    html_preview: html,
+    sent_at: nowIso,
+    status: 'DELIVERED',
+  };
+
+  store.emails.unshift(emailRec);
+  record.email_sent = true;
+  record.email_sent_at = nowIso;
+  return emailRec;
 }
 
 export function confirmServerOrder(
@@ -794,16 +1088,25 @@ export function confirmServerOrder(
     | 'expired_late_payment'
     | 'not_found';
   trackingId?: string | null;
+  emailSentTo?: string | null;
 } {
   const store = getStore();
   const record = store.orders.get(orderId);
   if (!record) return { result: 'not_found' };
 
   if (store.paymentIds.has(paymentEntity.id)) {
-    return { result: 'duplicate_payment', trackingId: record.tracking_id };
+    return {
+      result: 'duplicate_payment',
+      trackingId: record.tracking_id,
+      emailSentTo: record.customer_email,
+    };
   }
   if (record.status === 'CONFIRMED') {
-    return { result: 'already_confirmed', trackingId: record.tracking_id };
+    return {
+      result: 'already_confirmed',
+      trackingId: record.tracking_id,
+      emailSentTo: record.customer_email,
+    };
   }
 
   store.paymentIds.add(paymentEntity.id);
@@ -841,8 +1144,9 @@ export function confirmServerOrder(
     record.stock_deducted = true;
   }
 
-  const trackingSuffix = crypto.randomBytes(3).toString('hex').toUpperCase();
-  const trackingId = record.tracking_id || `TRK-KC-${trackingSuffix}`;
+  // Generate 12-hex-char cryptographic Tracking ID (281 trillion combinations — impossible to guess)
+  const trackingToken = crypto.randomBytes(6).toString('hex').toUpperCase();
+  const trackingId = record.tracking_id || `TRK-KC-${trackingToken}`;
   const etaDate = new Date(Date.now() + 4 * 24 * 3600 * 1000).toLocaleDateString('en-IN', {
     day: 'numeric',
     month: 'short',
@@ -852,30 +1156,38 @@ export function confirmServerOrder(
   record.status = 'CONFIRMED';
   record.payment_id = paymentEntity.id;
   record.tracking_id = trackingId;
-  record.courier_name = record.courier_name || 'Delhivery Express';
+  record.courier_name = record.courier_name || 'BlueDart Royal Priority';
   record.fulfillment_status = 'ORDER_PLACED';
   record.estimated_delivery = etaDate;
   record.tracking_history = [
     ...(record.tracking_history || []).filter((e) => e.status !== 'PENDING_PAYMENT'),
     {
       status: 'ORDER_PLACED',
-      title: 'Order Confirmed & Payment Verified',
-      location: 'Jaipur Warehouse, RJ',
-      note: `Payment (${paymentEntity.id}) verified via webhook. Tracking ID ${trackingId} & GST Invoice ${record.invoice_number} generated.`,
+      title: 'Order Confirmed, GST Invoice & Tracking ID Emailed',
+      location: 'Jaipur Flagship Atelier, RJ',
+      note: `Payment (${paymentEntity.id}) verified via webhook. GST Invoice ${record.invoice_number} and confidential Tracking ID ${trackingId} emailed to ${record.customer_email}.`,
       timestamp: nowIso,
     },
   ];
   record.updated_at = nowIso;
-  return { result: 'confirmed', trackingId };
+
+  // Automatically dispatch HTML Email Receipt + Tracking ID to customer's email
+  dispatchOrderConfirmationEmail(record);
+
+  return {
+    result: 'confirmed',
+    trackingId,
+    emailSentTo: record.customer_email,
+  };
 }
 
 const STAGE_TITLES: Record<FulfillmentStatus, string> = {
   PENDING_PAYMENT: 'Awaiting Payment',
-  ORDER_PLACED: 'Order Confirmed & Received at Warehouse',
-  PACKED: 'Order Quality Checked & Packed',
-  SHIPPED: 'Order Dispatched with Courier Partner',
+  ORDER_PLACED: 'Order Confirmed & Received at Atelier',
+  PACKED: 'Quality Checked, Steamed & Packed with GST Invoice',
+  SHIPPED: 'Dispatched with Priority Courier Partner',
   OUT_FOR_DELIVERY: 'Out for Delivery in Your City',
-  DELIVERED: 'Order Delivered Successfully',
+  DELIVERED: 'Consignment Delivered Successfully',
   CANCELLED: 'Order Cancelled',
 };
 
@@ -898,15 +1210,15 @@ export function updateServerOrderTracking(
   const nowIso = new Date().toISOString();
 
   if (update.courierName && update.courierName.trim()) {
-    record.courier_name = update.courierName.trim();
+    record.courier_name = sanitizeText(update.courierName, 80);
   }
   if (update.trackingId && update.trackingId.trim()) {
-    record.tracking_id = update.trackingId.trim().toUpperCase();
+    record.tracking_id = sanitizeText(update.trackingId, 40).toUpperCase();
   } else if (!record.tracking_id) {
-    record.tracking_id = `TRK-KC-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+    record.tracking_id = `TRK-KC-${crypto.randomBytes(6).toString('hex').toUpperCase()}`;
   }
   if (update.estimatedDelivery !== undefined && update.estimatedDelivery.trim()) {
-    record.estimated_delivery = update.estimatedDelivery.trim();
+    record.estimated_delivery = sanitizeText(update.estimatedDelivery, 60);
   }
 
   record.fulfillment_status = nextStatus;
@@ -915,12 +1227,12 @@ export function updateServerOrderTracking(
     title: STAGE_TITLES[nextStatus] || `Status updated to ${nextStatus}`,
     location:
       update.location && update.location.trim()
-        ? update.location.trim()
+        ? sanitizeText(update.location, 120)
         : 'Jaipur Fulfillment Hub, RJ',
     note:
       update.note && update.note.trim()
-        ? update.note.trim()
-        : `Order status updated by Admin to ${nextStatus.replace(/_/g, ' ')}.`,
+        ? sanitizeText(update.note, 300)
+        : `Consignment status updated to ${nextStatus.replace(/_/g, ' ')}.`,
     timestamp: nowIso,
   };
 
@@ -944,7 +1256,6 @@ export function getAdminAnalyticsSummary() {
   const liveConfirmedRevenuePaise = confirmedOrders.reduce((acc, o) => acc + o.amount_paise, 0);
   const totalDiscountGivenPaise = confirmedOrders.reduce((acc, o) => acc + (o.discount_paise || 0), 0);
 
-  // Combine historical boutique sales + live session sales for rich client presentation
   const catalogRevenueByCategory: Record<'kurti' | 'bag' | 'accessory', number> = {
     kurti: 0,
     bag: 0,
@@ -1004,19 +1315,19 @@ export function getAdminAnalyticsSummary() {
     categoryBreakdown: [
       {
         category: 'kurti',
-        label: 'Kurtis / कुर्तियाँ',
+        label: 'Kurtas & Sets / कुर्तियाँ',
         revenuePaise: catalogRevenueByCategory.kurti,
         percentage: Math.round((catalogRevenueByCategory.kurti / Math.max(1, totalCatalogRevenuePaise)) * 100),
       },
       {
         category: 'bag',
-        label: 'Ethnic Bags / बैग्स',
+        label: 'Heritage Bags / बैग्स',
         revenuePaise: catalogRevenueByCategory.bag,
         percentage: Math.round((catalogRevenueByCategory.bag / Math.max(1, totalCatalogRevenuePaise)) * 100),
       },
       {
         category: 'accessory',
-        label: 'Accessories / ज्वेलरी',
+        label: 'Fine Jewellery / ज्वेलरी',
         revenuePaise: catalogRevenueByCategory.accessory,
         percentage: Math.round((catalogRevenueByCategory.accessory / Math.max(1, totalCatalogRevenuePaise)) * 100),
       },
@@ -1033,12 +1344,13 @@ export function getAdminConfig() {
   return {
     notificationTarget: store.notificationTarget,
     fallbackTier: store.fallbackTier,
+    storeProfile: store.storeProfile,
   };
 }
 
 export function setNotificationTarget(target: string) {
   const store = getStore();
-  store.notificationTarget = target.trim();
+  store.notificationTarget = sanitizeText(target, 120);
   return store.notificationTarget;
 }
 

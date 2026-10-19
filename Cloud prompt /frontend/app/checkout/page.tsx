@@ -12,6 +12,7 @@ export default function CheckoutPage() {
   const { cart, lang, appliedCoupon, setAppliedCoupon, hydrate, t } = useStore();
 
   const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [pincode, setPincode] = useState('');
   const [cityState, setCityState] = useState('Jaipur, Rajasthan');
@@ -20,6 +21,7 @@ export default function CheckoutPage() {
   const [serverQuote, setServerQuote] = useState<{
     subtotalPaise: number;
     discountPaise: number;
+    shippingPaise: number;
     couponCode: string | null;
     couponMessage?: string;
     gstPaise: number;
@@ -58,6 +60,7 @@ export default function CheckoutPage() {
           setServerQuote({
             subtotalPaise: d.subtotalPaise ?? d.totalPaise,
             discountPaise: d.discountPaise ?? 0,
+            shippingPaise: d.shippingPaise ?? 0,
             couponCode: d.couponCode ?? null,
             couponMessage: d.couponMessage,
             gstPaise: d.gstPaise ?? Math.round((d.totalPaise * 5) / 105),
@@ -82,6 +85,7 @@ export default function CheckoutPage() {
     const check = validateCheckoutForm({
       name,
       phone,
+      email,
       address: fullAddr,
       pincode,
     });
@@ -105,6 +109,7 @@ export default function CheckoutPage() {
         body: JSON.stringify({
           customer: {
             name: name.trim(),
+            email: email.trim(),
             phone: phone.replace(/\D/g, ''),
             address: fullAddr,
           },
@@ -130,6 +135,7 @@ export default function CheckoutPage() {
 
   const displaySubtotal = serverQuote?.subtotalPaise ?? clientSubtotalPaise;
   const displayDiscount = serverQuote?.discountPaise ?? 0;
+  const displayShipping = serverQuote?.shippingPaise ?? 0;
   const displayTotal = serverQuote?.totalPaise ?? clientSubtotalPaise;
   const displayGst = serverQuote?.gstPaise ?? Math.round((displayTotal * 5) / 105);
 
@@ -147,7 +153,7 @@ export default function CheckoutPage() {
             <p className="text-stone-600 mb-4">{t('emptyCartTitle')}</p>
             <Link
               href="/"
-              className="inline-flex items-center px-6 py-3 rounded-xl bg-rose-800 text-white font-semibold text-sm"
+              className="inline-flex items-center px-6 py-3 rounded-xl bg-rose-900 text-white font-semibold text-sm"
             >
               {t('continueShopping')}
             </Link>
@@ -166,6 +172,7 @@ export default function CheckoutPage() {
                   type="button"
                   onClick={() => {
                     setName('Priya Sharma');
+                    setEmail('priya.sharma@gmail.com');
                     setPhone('9876543210');
                     setPincode('302001');
                     setCityState('Jaipur, Rajasthan');
@@ -173,7 +180,7 @@ export default function CheckoutPage() {
                   }}
                   className="text-xs font-semibold text-rose-800 hover:underline"
                 >
-                  {lang === 'hi' ? 'डेमो पता भरें (Auto-fill Demo)' : 'Auto-fill Demo Address'}
+                  {lang === 'hi' ? 'त्वरित पता भरें (Quick Fill)' : 'Quick Fill Sample Patron'}
                 </button>
               </div>
 
@@ -214,6 +221,26 @@ export default function CheckoutPage() {
                   />
                   {errors.phone && <p className="text-xs text-rose-700 mt-1">{errors.phone}</p>}
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-stone-600 mb-1.5">
+                  📧 {t('emailAddress')} *
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder={t('emailPlaceholder')}
+                  className="w-full px-4 py-2.5 rounded-xl border border-stone-300 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
+                />
+                <p className="text-[11px] text-stone-500 mt-1">
+                  {lang === 'hi'
+                    ? 'ऑर्डर कन्फर्म होते ही आपका GST टैक्स बिल और गोपनीय ट्रैकिंग आईडी इसी ईमेल पर भेजे जाएंगे।'
+                    : 'Your official GST Tax Invoice and confidential shipment Tracking ID will be emailed here immediately upon payment confirmation.'}
+                </p>
+                {errors.email && <p className="text-xs text-rose-700 mt-1">{errors.email}</p>}
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -273,12 +300,12 @@ export default function CheckoutPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-4 px-6 rounded-xl bg-rose-800 hover:bg-rose-900 disabled:bg-stone-400 text-white font-bold text-base shadow-sm transition-colors"
+                className="w-full py-4 px-6 rounded-xl bg-rose-900 hover:bg-rose-950 disabled:bg-stone-400 text-white font-bold text-base shadow-sm transition-colors"
               >
                 {loading
                   ? lang === 'hi'
-                    ? 'ऑर्डर बनाया जा रहा है...'
-                    : 'Creating Secure UPI Order...'
+                    ? 'सुरक्षित ऑर्डर बनाया जा रहा है...'
+                    : 'Generating Encrypted UPI Order...'
                   : `${t('payNow')} (${rupees(displayTotal)})`}
               </button>
             </form>
@@ -331,7 +358,7 @@ export default function CheckoutPage() {
                     <button
                       type="button"
                       onClick={() => handleApplyCoupon()}
-                      className="px-3 py-1.5 rounded-lg bg-rose-800 text-white text-xs font-bold"
+                      className="px-3 py-1.5 rounded-lg bg-rose-900 text-white text-xs font-bold"
                     >
                       Apply
                     </button>
@@ -345,8 +372,8 @@ export default function CheckoutPage() {
                       onClick={() => handleApplyCoupon(code)}
                       className={`px-2 py-0.5 rounded text-[11px] font-mono font-bold border transition ${
                         appliedCoupon === code
-                          ? 'bg-emerald-700 text-white border-emerald-700'
-                          : 'bg-white text-rose-800 border-rose-200 hover:bg-rose-50'
+                          ? 'bg-emerald-800 text-white border-emerald-800'
+                          : 'bg-white text-rose-900 border-rose-200 hover:bg-rose-50'
                       }`}
                     >
                       {code}
@@ -370,10 +397,12 @@ export default function CheckoutPage() {
                 )}
                 <div className="flex justify-between text-stone-600">
                   <span>{t('shipping')}</span>
-                  <span className="text-emerald-700 font-bold">{t('free')}</span>
+                  <span className="text-emerald-700 font-bold">
+                    {displayShipping > 0 ? rupees(displayShipping) : t('free')}
+                  </span>
                 </div>
                 <div className="flex justify-between text-xs text-stone-500">
-                  <span>Included GST (5% — CGST 2.5% + SGST 2.5%)</span>
+                  <span>Included GST (2.5% CGST + 2.5% SGST)</span>
                   <span>{rupees(displayGst)}</span>
                 </div>
                 <div className="border-t border-stone-200 pt-3 flex justify-between text-base font-extrabold text-stone-900">

@@ -33,9 +33,7 @@ export default function HomePage() {
           setProducts(data.products);
         }
       })
-      .catch(() => {
-        // Keep fallback DEMO_PRODUCTS
-      });
+      .catch(() => {});
   }, []);
 
   const filtered = useMemo(
@@ -59,62 +57,52 @@ export default function HomePage() {
     <div className="min-h-screen flex flex-col">
       <Header />
 
-      {/* Demo Notice Strip */}
-      <div className="bg-amber-50 border-b border-amber-200/80 text-amber-950 text-xs py-2 px-4">
+      {/* Royal Assurance Strip (No Demo/Sample labels — pure Flagship Brand UX) */}
+      <div className="bg-amber-50/90 border-b border-amber-200/80 text-amber-950 text-xs py-2 px-4">
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <span className="px-2 py-0.5 rounded bg-amber-300 font-bold uppercase tracking-wider text-[10px]">
-              DEMO
+          <div className="flex items-center gap-2 font-medium">
+            <span className="px-2 py-0.5 rounded bg-amber-300/80 font-extrabold uppercase tracking-wider text-[10px]">
+              JAIPUR ATELIER
             </span>
             <span>{t('demoNoticeBanner')}</span>
           </div>
           <div className="flex items-center gap-3 font-bold">
-            <Link href="/order/ORDDEMO1001/invoice" className="text-rose-800 hover:underline">
-              🧾 Sample GST Bill
+            <Link href="/track" className="text-rose-900 hover:underline">
+              📦 {t('trackOrderNav')}
             </Link>
             <span>•</span>
-            <Link href="/track?id=TRK-KC-1001" className="text-rose-800 hover:underline">
-              📦 Sample Live Tracking
-            </Link>
-            <span>•</span>
-            <Link href="/admin" className="text-rose-800 hover:underline">
-              ⚙️ Admin Stock & Charts
+            <Link href="/wishlist" className="text-rose-900 hover:underline">
+              ♥ {t('wishlistTitle')}
             </Link>
           </div>
         </div>
       </div>
 
-      {/* Hero Section */}
-      <section className="relative bg-gradient-to-br from-rose-950 via-rose-900 to-amber-900 text-white overflow-hidden">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-14 flex flex-col md:flex-row items-center justify-between gap-8">
+      {/* Editorial Luxury Hero Section */}
+      <section className="relative bg-gradient-to-br from-rose-950 via-rose-900 to-amber-950 text-white overflow-hidden">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16 flex flex-col md:flex-row items-center justify-between gap-8">
           <div className="max-w-2xl">
-            <span className="inline-block px-3 py-1 rounded-full bg-amber-400/20 border border-amber-300/40 text-amber-200 text-xs font-semibold uppercase tracking-widest mb-4">
+            <span className="inline-block px-3.5 py-1 rounded-full bg-amber-400/20 border border-amber-300/40 text-amber-200 text-xs font-semibold uppercase tracking-widest mb-4">
               {t('heroBadge')}
             </span>
-            <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight leading-tight mb-4">
+            <h1 className="text-3xl sm:text-5xl font-serif font-extrabold tracking-tight leading-tight mb-4">
               {t('heroTitle')}
             </h1>
-            <p className="text-rose-100/90 text-sm sm:text-base leading-relaxed mb-6">
+            <p className="text-rose-100/90 text-sm sm:text-base leading-relaxed mb-7">
               {t('heroSubtitle')}
             </p>
             <div className="flex flex-wrap gap-3">
               <a
                 href="#catalog"
-                className="px-6 py-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-stone-950 font-bold text-sm shadow-md transition-colors"
+                className="px-6 py-3.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-stone-950 font-extrabold text-sm shadow-md transition-colors"
               >
-                {t('shopNow')}
+                {t('shopNow')} →
               </a>
               <Link
-                href="/track?id=TRK-KC-1001"
-                className="px-5 py-3 rounded-xl bg-white/10 hover:bg-white/20 border border-white/25 text-white font-semibold text-sm transition-colors"
+                href="/track"
+                className="px-5 py-3.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/25 text-white font-semibold text-sm transition-colors"
               >
                 📦 {t('trackOrderNav')}
-              </Link>
-              <Link
-                href="/admin"
-                className="px-5 py-3 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-300/40 text-emerald-100 font-semibold text-sm transition-colors"
-              >
-                📊 {lang === 'hi' ? 'एडमिन पैनल और स्टॉक' : 'Admin Stock & Analytics'}
               </Link>
             </div>
           </div>
@@ -122,32 +110,32 @@ export default function HomePage() {
           <div className="grid grid-cols-3 gap-3 w-full md:w-auto max-w-md">
             <img
               src="/products/kurti2.svg"
-              alt="Festive Kurti"
+              alt="Maharani Zardozi Anarkali"
               className="w-28 sm:w-32 aspect-[4/5] rounded-2xl object-cover border-2 border-amber-300/40 shadow-lg"
             />
             <img
-              src="/products/bag1.svg"
-              alt="Handcrafted Bag"
+              src="/products/bag3.svg"
+              alt="Zardozi Bridal Potli"
               className="w-28 sm:w-32 aspect-[4/5] rounded-2xl object-cover border-2 border-amber-300/40 shadow-lg translate-y-3"
             />
             <img
-              src="/products/acc1.svg"
-              alt="Oxidized Jhumka"
+              src="/products/acc3.svg"
+              alt="Bikaneri Jadau Kundan Choker"
               className="w-28 sm:w-32 aspect-[4/5] rounded-2xl object-cover border-2 border-amber-300/40 shadow-lg"
             />
           </div>
         </div>
       </section>
 
-      {/* Interactive Promo Code Bar (1-Tap Apply) */}
+      {/* Interactive Privilege Code Bar (1-Tap Apply) */}
       <section className="bg-white border-b border-stone-200 py-3.5 px-4">
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-xs sm:text-sm font-bold text-stone-800">
             <span className="text-base">🎟️</span>
             <span>
               {lang === 'hi'
-                ? 'फेस्टिव डिस्काउंट कूपन (क्लिक करके कार्ट में लगाएं):'
-                : 'Festive Promo Codes (Tap any code to auto-apply in Cart):'}
+                ? 'विशेष फेस्टिव ऑफर्स (टैप करके शॉपिंग बैग में लागू करें):'
+                : 'Boutique Privilege Codes (Tap any code to auto-apply at checkout):'}
             </span>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -165,8 +153,8 @@ export default function HomePage() {
                   onClick={() => setAppliedCoupon(active ? '' : c.code)}
                   className={`px-3 py-1 rounded-full text-xs font-mono font-bold border transition ${
                     active
-                      ? 'bg-emerald-700 text-white border-emerald-700 shadow-sm'
-                      : 'bg-amber-50 hover:bg-amber-100 text-rose-900 border-amber-300'
+                      ? 'bg-emerald-800 text-white border-emerald-800 shadow-sm'
+                      : 'bg-amber-50 hover:bg-amber-100 text-rose-950 border-amber-300'
                   }`}
                 >
                   {active ? `✓ ${c.code} Applied` : c.label}
@@ -199,7 +187,7 @@ export default function HomePage() {
                   onClick={() => setCategory(tab.id)}
                   className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-colors ${
                     category === tab.id
-                      ? 'bg-rose-800 text-white shadow-sm'
+                      ? 'bg-rose-900 text-white shadow-sm'
                       : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
                   }`}
                 >
@@ -270,7 +258,7 @@ export default function HomePage() {
         {paginated.items.length === 0 ? (
           <div className="bg-white rounded-2xl border border-stone-200 p-12 text-center">
             <p className="text-stone-600 font-medium mb-3">
-              No matching ethnic wear items found.
+              No matching couture pieces found.
             </p>
             <button
               type="button"
@@ -279,7 +267,7 @@ export default function HomePage() {
                 setQuery('');
                 setInStockOnly(false);
               }}
-              className="px-4 py-2 rounded-xl bg-rose-800 text-white text-xs font-semibold"
+              className="px-4 py-2 rounded-xl bg-rose-900 text-white text-xs font-semibold"
             >
               Reset Filters
             </button>

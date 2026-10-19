@@ -10,7 +10,7 @@ process.env.PAYMENT_MODE = 'mock';
 
 const { buildApp } = require('../server');
 
-describe('Phases 3–10 Backend API — Products, Coupons, Auto Stock Deduction, Webhooks, Live Tracking & Admin', () => {
+describe('Phases 3–10 Backend API — Products, Coupons, Auto Stock Deduction, Webhooks, Confidential Tracking & Admin', () => {
   let app;
 
   before(async () => {
@@ -49,14 +49,14 @@ describe('Phases 3–10 Backend API — Products, Coupons, Auto Stock Deduction,
     assert.equal(missing.statusCode, 404);
   });
 
-  it('POST /api/cart/validate computes authoritative server totals and applies coupon discounts in paise', async () => {
+  it('POST /api/cart/validate ignores tampered client prices and computes authoritative server totals & coupons', async () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/cart/validate',
       payload: {
         items: [
-          { id: 1, qty: 2, size: 'M' }, // 79900 * 2 = 159800
-          { id: 5, qty: 1, size: 'Free Size' }, // 59900 * 1 = 59900
+          { id: 1, qty: 2, size: 'M', price_paise: 1 }, // 79900 * 2 = 159800 (ignores client price_paise: 1)
+          { id: 5, qty: 1, size: 'Free Size', price_paise: 1 }, // 59900 * 1 = 59900
         ],
         couponCode: 'DIWALI20', // 20% off 219700 = 43940 -> 175760
       },
@@ -93,7 +93,7 @@ describe('Phases 3–10 Backend API — Products, Coupons, Auto Stock Deduction,
     assert.equal(o1.subtotalPaise, 159800);
     assert.equal(o1.discountPaise, 15980);
     assert.equal(o1.amountPaise, 143820);
-    assert.equal(o1.invoiceNumber.startsWith('INV-KC-2026-'), true);
+    assert.equal(o1.invoiceNumber.startsWith('ZJ/2026-27/'), true);
     assert.equal(o1.expiresInSeconds, 240);
 
     const res2 = await app.inject({
@@ -117,7 +117,7 @@ describe('Phases 3–10 Backend API — Products, Coupons, Auto Stock Deduction,
     assert.equal(outOfStockRes.statusCode, 409);
   });
 
-  it('generates Tracking ID & auto-decrements product stock on webhook confirmation, and supports Admin live tracking', async () => {
+  it('generates 12-hex cryptographic Tracking ID & auto-decrements product stock on webhook confirmation, and masks PII on /api/track', async () => {
     const beforeProd = (await app.inject({ method: 'GET', url: '/api/products/2' })).json().product;
     const stockBefore = beforeProd.stock;
 
@@ -173,7 +173,10 @@ describe('Phases 3–10 Backend API — Products, Coupons, Auto Stock Deduction,
     const statusAfter = await app.inject({ method: 'GET', url: `/api/orders/${order.orderId}` });
     const statusJson = statusAfter.json();
     assert.equal(statusJson.status, 'CONFIRMED');
-    assert.equal(Boolean(statusJson.trackingId && statusJson.trackingId.startsWith('TRK-KC-')), true);
+    assert.equal(
+      Boolean(statusJson.trackingId && /^TRK-KC-[0-9A-F]{12}$/.test(statusJson.trackingId)),
+      true
+    );
 
     const adminUpdateRes = await app.inject({
       method: 'PUT',
@@ -197,6 +200,7 @@ describe('Phases 3–10 Backend API — Products, Coupons, Auto Stock Deduction,
     assert.equal(trackRes2.statusCode, 200);
     assert.equal(trackRes2.json().fulfillmentStatus, 'SHIPPED');
     assert.equal(trackRes2.json().courierName, 'BlueDart Express');
+    assert.equal(trackRes2.json().customerPhoneMasked, '91******80');
   });
 
   it('enforces admin authentication, product CRUD, 4-Tier Fallback switching, and audit logs', async () => {

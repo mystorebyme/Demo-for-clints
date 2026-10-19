@@ -1,38 +1,37 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="600" height="600" role="img" aria-label="Pearl & Mirror Work Hair Clip Set">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 750" width="600" height="750">
   <defs>
-    <linearGradient id="bg-acc4" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#fdf2f8"/>
-      <stop offset="100%" stop-color="#fbcfe8"/>
+    <linearGradient id="bg_acc4" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FDF5F0"/>
+      <stop offset="100%" stop-color="#F0D9C9"/>
+    </linearGradient>
+    <linearGradient id="g_acc4" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#B3283E"/>
+      <stop offset="100%" stop-color="#751423"/>
     </linearGradient>
   </defs>
-  <rect width="600" height="600" fill="url(#bg-acc4)"/>
-  <circle cx="300" cy="285" r="210" fill="#ffffff" opacity="0.65"/>
-  <!-- Demo Merchandise Transparency Badge -->
-  <rect x="24" y="24" width="180" height="32" rx="16" fill="#1f2937" opacity="0.82"/>
-  <text x="114" y="45" text-anchor="middle" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#ffffff" letter-spacing="0.8">DEMO CATALOG ITEM</text>
+  <rect width="600" height="750" fill="url(#bg_acc4)"/>
+  <!-- Subtle Mughal Arch Frame -->
+  <rect x="24" y="24" width="552" height="702" rx="28" fill="none" stroke="#D4AF37" stroke-width="1.5" opacity="0.45"/>
+  <path d="M60 110 Q300 35 540 110" fill="none" stroke="#D4AF37" stroke-width="1.2" opacity="0.35"/>
+  <!-- Top Luxury Edition Pill -->
+  <rect x="150" y="48" width="300" height="30" rx="15" fill="#992538"/>
+  <text x="300" y="68" text-anchor="middle" fill="#FFF8E7" font-family="Georgia, serif" font-size="11" font-weight="bold" letter-spacing="1.5">JAIPUR LAC & MEENAKARI</text>
   
+    <ellipse cx="300" cy="560" rx="110" ry="14" fill="#000" opacity="0.12"/>
+    <!-- Royal Jewellery Medallion & Jhumka / Choker Craft -->
+    <circle cx="300" cy="220" r="42" fill="url(#g_acc4)" stroke="#D4AF37" stroke-width="4"/>
+    <circle cx="300" cy="220" r="18" fill="#D4AF37"/>
+    <path d="M210 385 Q300 265 390 385 Z" fill="url(#g_acc4)" stroke="#D4AF37" stroke-width="4"/>
+    <line x1="300" y1="262" x2="300" y2="315" stroke="#D4AF37" stroke-width="5"/>
+    <circle cx="225" cy="410" r="9" fill="#D4AF37"/>
+    <circle cx="255" cy="418" r="9" fill="#D4AF37"/>
+    <circle cx="285" cy="422" r="9" fill="#D4AF37"/>
+    <circle cx="315" cy="422" r="9" fill="#D4AF37"/>
+    <circle cx="345" cy="418" r="9" fill="#D4AF37"/>
+    <circle cx="375" cy="410" r="9" fill="#D4AF37"/>
   
-      <g >
-        <!-- Pair of Jhumka Earrings -->
-        
-          <circle cx="235" cy="160" r="18" fill="#9d174d" stroke="#fde047" stroke-width="3"/>
-          <circle cx="235" cy="160" r="7" fill="#fde047"/>
-          <line x1="235" y1="178" x2="235" y2="220" stroke="#9d174d" stroke-width="5"/>
-          <path d="M187 290 Q235 205 283 290 Z" fill="#9d174d" stroke="#fde047" stroke-width="3"/>
-          <line x1="189" y1="290" x2="281" y2="290" stroke="#fde047" stroke-width="4"/>
-          <circle cx="199" cy="312" r="6" fill="#db2777" stroke="#fde047" stroke-width="2"/><circle cx="217" cy="312" r="6" fill="#db2777" stroke="#fde047" stroke-width="2"/><circle cx="235" cy="312" r="6" fill="#db2777" stroke="#fde047" stroke-width="2"/><circle cx="253" cy="312" r="6" fill="#db2777" stroke="#fde047" stroke-width="2"/><circle cx="271" cy="312" r="6" fill="#db2777" stroke="#fde047" stroke-width="2"/>
-        
-          <circle cx="365" cy="160" r="18" fill="#9d174d" stroke="#fde047" stroke-width="3"/>
-          <circle cx="365" cy="160" r="7" fill="#fde047"/>
-          <line x1="365" y1="178" x2="365" y2="220" stroke="#9d174d" stroke-width="5"/>
-          <path d="M317 290 Q365 205 413 290 Z" fill="#9d174d" stroke="#fde047" stroke-width="3"/>
-          <line x1="319" y1="290" x2="411" y2="290" stroke="#fde047" stroke-width="4"/>
-          <circle cx="329" cy="312" r="6" fill="#db2777" stroke="#fde047" stroke-width="2"/><circle cx="347" cy="312" r="6" fill="#db2777" stroke="#fde047" stroke-width="2"/><circle cx="365" cy="312" r="6" fill="#db2777" stroke="#fde047" stroke-width="2"/><circle cx="383" cy="312" r="6" fill="#db2777" stroke="#fde047" stroke-width="2"/><circle cx="401" cy="312" r="6" fill="#db2777" stroke="#fde047" stroke-width="2"/>
-        
-      </g>
-    
-  <!-- Bottom Caption Card -->
-  <rect x="40" y="492" width="520" height="80" rx="16" fill="#ffffff" opacity="0.92"/>
-  <text x="300" y="526" text-anchor="middle" font-family="system-ui, sans-serif" font-size="20" font-weight="700" fill="#111827">Pearl & Mirror Work Hair Clip Set</text>
-  <text x="300" y="553" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" font-weight="500" fill="#6b7280">Handcrafted Festive Hair Accessories</text>
+  <!-- Bottom Editorial Caption Card -->
+  <rect x="48" y="615" width="504" height="88" rx="18" fill="#FFFFFF" opacity="0.94" stroke="#D4AF37" stroke-width="1"/>
+  <text x="300" y="652" text-anchor="middle" fill="#1C1917" font-family="Georgia, serif" font-size="21" font-weight="bold">Handcrafted Kundan Kada Set (6 Pcs)</text>
+  <text x="300" y="680" text-anchor="middle" fill="#78716C" font-family="sans-serif" font-size="13" font-weight="600" letter-spacing="0.5">Artisanal Enamel Work • Festive Stacking</text>
 </svg>

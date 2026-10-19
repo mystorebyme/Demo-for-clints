@@ -1,159 +1,167 @@
 'use client';
-import { useState } from 'react';
+
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { rupees, useCart, useHydrated, useLang, useT } from '../lib/store';
+import { usePathname } from 'next/navigation';
+import { useStore } from '../lib/store';
 
 export default function Header() {
-  const { t, lang } = useT();
-  const setLang = useLang((s) => s.setLang);
-  const hydrated = useHydrated();
-  const lines = useCart((s) => s.lines);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const pathname = usePathname();
+  const { lang, toggleLang, cart, wishlist, appliedCoupon, setAppliedCoupon, hydrate, t } =
+    useStore();
+  const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
-  const count = lines.reduce((n, l) => n + l.qty, 0);
-  const subtotal = lines.reduce((s, l) => s + l.price_paise * l.qty, 0);
+  useEffect(() => {
+    hydrate();
+  }, [hydrate]);
+
+  const totalItems = cart.reduce((acc, item) => acc + item.qty, 0);
+  const wishlistCount = wishlist.length;
+
+  const handleApplyTopCoupon = (code: string) => {
+    setAppliedCoupon(code);
+    setCopiedCode(code);
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(code).catch(() => {});
+    }
+    setTimeout(() => setCopiedCode(null), 2500);
+  };
 
   return (
-    <header className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-pink-100 shadow-sm">
-      <div
-        role="region"
-        aria-label="Demo Storefront Notice"
-        className="bg-gray-900 text-gray-100 text-xs py-1.5 px-4 text-center font-medium"
-      >
-        <span className="inline-block w-2 h-2 rounded-full bg-amber-400 mr-2 align-middle" />
-        {t('demoBanner')}
+    <header className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-amber-100 shadow-sm print:hidden">
+      {/* Top Festive Promo & Coupon Bar */}
+      <div className="bg-gradient-to-r from-rose-900 via-rose-800 to-amber-800 text-amber-50 text-xs py-1.5 px-4">
+        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2">
+          <span className="font-medium tracking-wide flex items-center gap-1.5">
+            <span>✨ {t('freeShippingBanner')}</span>
+          </span>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={() => handleApplyTopCoupon('DIWALI20')}
+              className="px-2 py-0.5 rounded bg-amber-400/20 hover:bg-amber-400/30 border border-amber-300/40 text-amber-100 font-semibold transition"
+              title="Click to apply 20% OFF coupon"
+            >
+              🎟️ {copiedCode === 'DIWALI20' || appliedCoupon === 'DIWALI20' ? '✓ DIWALI20 Applied' : 'Use Code: DIWALI20 (20% OFF)'}
+            </button>
+            <button
+              type="button"
+              onClick={() => handleApplyTopCoupon('FIRST10')}
+              className="hidden sm:inline-block px-2 py-0.5 rounded bg-white/10 hover:bg-white/20 border border-white/20 text-white font-semibold transition"
+              title="Click to apply 10% OFF coupon"
+            >
+              {copiedCode === 'FIRST10' || appliedCoupon === 'FIRST10' ? '✓ FIRST10 Applied' : 'FIRST10 (10% OFF)'}
+            </button>
+          </div>
+        </div>
       </div>
 
-      <div className="max-w-6xl mx-auto flex items-center justify-between px-4 py-3 gap-4">
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => setMobileMenuOpen((v) => !v)}
-            className="md:hidden p-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-brand-light"
-            aria-label="Toggle navigation menu"
-            aria-expanded={mobileMenuOpen}
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              {mobileMenuOpen ? (
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              ) : (
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              )}
-            </svg>
-          </button>
-
-          <Link href="/" className="flex items-center gap-2.5 group focus:outline-none">
-            <span className="w-9 h-9 rounded-xl bg-brand text-white flex items-center justify-center font-bold text-lg shadow-sm group-hover:bg-brand-dark transition-colors">
-              K
+      {/* Main Header */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3">
+        <Link href="/" className="flex items-center gap-3 group">
+          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-rose-700 to-amber-600 flex items-center justify-center text-white font-bold text-lg shadow-sm group-hover:scale-105 transition-transform">
+            KC
+          </div>
+          <div>
+            <span className="block text-base sm:text-lg font-bold text-stone-900 tracking-tight leading-none">
+              {t('brand')}
             </span>
-            <div>
-              <span className="text-xl font-extrabold tracking-tight text-brand block leading-none">
-                {t('brand')}
-              </span>
-              <span className="text-[11px] text-gray-500 hidden sm:block mt-0.5">
-                {t('tagline')}
-              </span>
-            </div>
-          </Link>
-        </div>
+            <span className="hidden sm:block text-xs text-stone-500 mt-0.5">
+              {t('brandTagline')}
+            </span>
+          </div>
+        </Link>
 
-        {/* Desktop Category & Tracking Navigation */}
-        <nav aria-label="Main Navigation" className="hidden md:flex items-center gap-5 text-sm font-medium text-gray-700">
-          <Link href="/" className="hover:text-brand transition-colors">
-            {t('navHome')}
+        <nav className="flex items-center gap-1.5 sm:gap-2.5">
+          <Link
+            href="/"
+            className={`text-sm font-medium px-2.5 py-1.5 rounded-lg transition-colors hidden md:inline-block ${
+              pathname === '/'
+                ? 'bg-rose-50 text-rose-800 font-semibold'
+                : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100'
+            }`}
+          >
+            {lang === 'hi' ? 'कैटलॉग' : 'Catalog'}
           </Link>
-          <Link href="/?category=kurti#catalog" className="hover:text-brand transition-colors">
-            {t('navKurtis')}
+
+          <Link
+            href="/wishlist"
+            aria-label="Wishlist"
+            className={`relative inline-flex items-center gap-1 text-xs sm:text-sm font-medium px-2.5 py-1.5 rounded-lg transition-colors ${
+              pathname?.startsWith('/wishlist')
+                ? 'bg-rose-50 text-rose-800 font-semibold border border-rose-200'
+                : 'text-stone-600 hover:text-rose-700 hover:bg-rose-50/60'
+            }`}
+          >
+            <span className="text-rose-600 text-sm">♥</span>
+            <span className="hidden sm:inline">{lang === 'hi' ? 'पसंदीदा' : 'Wishlist'}</span>
+            {wishlistCount > 0 && (
+              <span className="inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] font-bold bg-rose-100 text-rose-800 rounded-full">
+                {wishlistCount}
+              </span>
+            )}
           </Link>
-          <Link href="/?category=bag#catalog" className="hover:text-brand transition-colors">
-            {t('navBags')}
-          </Link>
-          <Link href="/?category=accessory#catalog" className="hover:text-brand transition-colors">
-            {t('navAccessories')}
-          </Link>
+
           <Link
             href="/track"
-            className="inline-flex items-center gap-1 text-brand font-semibold bg-pink-50 px-3 py-1 rounded-full border border-pink-200 hover:bg-brand hover:text-white transition-colors"
+            className={`text-xs sm:text-sm font-medium px-2.5 py-1.5 rounded-lg transition-colors ${
+              pathname?.startsWith('/track')
+                ? 'bg-amber-100 text-amber-900 font-semibold border border-amber-300'
+                : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100'
+            }`}
           >
-            <span>📦</span>
-            <span>{t('navTrack')}</span>
+            📦 {t('trackOrderNav')}
           </Link>
-          <Link href="/admin" className="text-gray-500 hover:text-brand transition-colors">
-            {t('navAdmin')}
-          </Link>
-        </nav>
 
-        <div className="flex items-center gap-2.5">
+          <Link
+            href="/admin"
+            className={`text-xs sm:text-sm font-medium px-2.5 py-1.5 rounded-lg transition-colors ${
+              pathname?.startsWith('/admin')
+                ? 'bg-rose-50 text-rose-800 font-semibold'
+                : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100'
+            }`}
+          >
+            {lang === 'hi' ? 'एडमिन' : 'Admin'}
+          </Link>
+
           <button
             type="button"
-            onClick={() => setLang(lang === 'en' ? 'hi' : 'en')}
-            className="text-xs sm:text-sm font-semibold border border-pink-200 bg-pink-50/60 text-brand-dark rounded-full px-3.5 py-1.5 hover:bg-brand hover:text-white transition-colors focus:ring-2 focus:ring-brand/30"
-            aria-label={lang === 'en' ? 'Switch language to Hindi (हिंदी)' : 'Switch language to English'}
+            onClick={toggleLang}
+            aria-label="Switch Language"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-stone-300 bg-stone-50 hover:bg-amber-50 hover:border-amber-300 text-xs sm:text-sm font-semibold text-stone-800 transition-colors"
           >
-            🌐 {lang === 'en' ? 'हिंदी' : 'English'}
+            <span className="text-rose-700">अ/A</span>
+            <span>{t('language')}</span>
           </button>
 
           <Link
             href="/cart"
-            className="relative flex items-center gap-2 text-xs sm:text-sm font-semibold bg-brand text-white rounded-full px-4 py-1.5 hover:bg-brand-dark transition-colors shadow-sm"
-            aria-label={`${t('cart')}${hydrated && count > 0 ? ` (${count} items, ${rupees(subtotal)})` : ''}`}
+            aria-label="Shopping Cart"
+            className="relative inline-flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-xl bg-rose-800 hover:bg-rose-900 text-white text-xs sm:text-sm font-semibold shadow-sm transition-colors"
           >
-            <span aria-hidden="true">🛒</span>
-            <span>{t('cart')}</span>
-            {hydrated && count > 0 && (
-              <span className="bg-white text-brand font-bold text-xs rounded-full px-2 py-0.5 leading-none">
-                {count}
-              </span>
-            )}
-          </Link>
-        </div>
-      </div>
-
-      {mobileMenuOpen && (
-        <nav
-          aria-label="Mobile Navigation"
-          className="md:hidden border-t border-gray-100 bg-white px-4 py-3 flex flex-col gap-2 text-sm font-medium"
-        >
-          <Link href="/" onClick={() => setMobileMenuOpen(false)} className="py-1.5 px-2 rounded hover:bg-brand-light">
-            {t('navHome')}
-          </Link>
-          <Link
-            href="/?category=kurti#catalog"
-            onClick={() => setMobileMenuOpen(false)}
-            className="py-1.5 px-2 rounded hover:bg-brand-light"
-          >
-            👗 {t('navKurtis')}
-          </Link>
-          <Link
-            href="/?category=bag#catalog"
-            onClick={() => setMobileMenuOpen(false)}
-            className="py-1.5 px-2 rounded hover:bg-brand-light"
-          >
-            👜 {t('navBags')}
-          </Link>
-          <Link
-            href="/?category=accessory#catalog"
-            onClick={() => setMobileMenuOpen(false)}
-            className="py-1.5 px-2 rounded hover:bg-brand-light"
-          >
-            💍 {t('navAccessories')}
-          </Link>
-          <Link
-            href="/track"
-            onClick={() => setMobileMenuOpen(false)}
-            className="py-1.5 px-2 rounded font-bold text-brand hover:bg-brand-light"
-          >
-            📦 {t('navTrack')}
-          </Link>
-          <Link
-            href="/admin"
-            onClick={() => setMobileMenuOpen(false)}
-            className="py-1.5 px-2 rounded text-gray-600 hover:bg-brand-light"
-          >
-            ⚙️ {t('navAdmin')}
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"
+              />
+            </svg>
+            <span className="hidden sm:inline">{t('cart')}</span>
+            <span
+              data-testid="cart-count-badge"
+              className="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full bg-amber-400 text-stone-950 text-xs font-bold"
+            >
+              {totalItems}
+            </span>
           </Link>
         </nav>
-      )}
+      </div>
     </header>
   );
 }

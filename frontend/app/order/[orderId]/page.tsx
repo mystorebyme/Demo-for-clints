@@ -1,406 +1,417 @@
 'use client';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { io } from 'socket.io-client';
+
+import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { API_URL, rupees, useT } from '../../../lib/store';
+import { useParams } from 'next/navigation';
+import QRCode from 'qrcode';
+import Header from '../../../components/Header';
+import Footer from '../../../components/Footer';
+import { rupees, useStore } from '../../../lib/store';
 
-type Status = 'LOADING' | 'PENDING' | 'CONFIRMED' | 'EXPIRED' | 'FAILED' | 'NOT_FOUND';
-
-type OrderItem = {
-  id: number;
-  name: string;
-  name_hi?: string | null;
-  size?: string;
-  qty: number;
-  price_paise: number;
+type OrderResponse = {
+  success: boolean;
+  orderId: string;
+  invoiceNumber?: string;
+  status: string;
+  subtotalPaise?: number;
+  discountPaise?: number;
+  couponCode?: string | null;
+  gstPaise?: number;
+  amountPaise: number;
+  customerName: string;
+  phone: string;
+  address: string;
+  items: Array<{
+    id: number;
+    name: string;
+    name_hi?: string;
+    qty: number;
+    size: string;
+    price_paise: number;
+    line_total_paise: number;
+  }>;
+  trackingId: string | null;
+  courierName?: string;
+  fulfillmentStatus?: string;
+  estimatedDelivery?: string | null;
+  qrExpiresAt: string;
+  qrPayload: string;
 };
 
-function DynamicQrSvg({ payload, orderId }: { payload: string; orderId: string }) {
-  const cells = useMemo(() => {
-    const size = 21;
-    const grid: boolean[][] = Array.from({ length: size }, () => Array(size).fill(false));
+export default function OrderPaymentPage() {
+  const params = useParams();
+  const orderId = String(params?.orderId || '');
+  const { lang, clearCart, setAppliedCoupon, t } = useStore();
 
-    const drawFinder = (r0: number, c0: number) => {
-      for (let r = 0; r < 7; r++) {
-        for (let c = 0; c < 7; c++) {
-          const border = r === 0 || r === 6 || c === 0 || c === 6;
-          const inner = r >= 2 && r <= 4 && c >= 2 && c <= 4;
-          grid[r0 + r][c0 + c] = border || inner;
-        }
-      }
-    };
-    drawFinder(0, 0);
-    drawFinder(0, size - 7);
-    drawFinder(size - 7, 0);
-
-    let hash = 2166136261;
-    const seedStr = `${payload}:${orderId}`;
-    for (let i = 0; i < seedStr.length; i++) {
-      hash ^= seedStr.charCodeAt(i);
-      hash = Math.imul(hash, 16777619);
-    }
-
-    for (let r = 0; r < size; r++) {
-      for (let c = 0; c < size; c++) {
-        const inFinder =
-          (r < 8 && c < 8) || (r < 8 && c >= size - 8) || (r >= size - 8 && c < 8);
-        if (inFinder) continue;
-        hash ^= (r * 31 + c * 17) & 0xff;
-        hash = Math.imul(hash, 16777619);
-        grid[r][c] = Math.abs(hash) % 10 < 5;
-      }
-    }
-    return grid;
-  }, [payload, orderId]);
-
-  return (
-    <svg
-      viewBox="0 0 250 250"
-      className="w-48 h-48 mx-auto rounded-2xl border-2 border-pink-200 bg-white p-3 shadow-sm"
-      role="img"
-      aria-label={`Dynamic UPI QR Code for Order ${orderId}`}
-    >
-      <rect width="250" height="250" fill="#ffffff" />
-      {cells.map((row, rIdx) =>
-        row.map((filled, cIdx) =>
-          filled ? (
-            <rect
-              key={`${rIdx}-${cIdx}`}
-              x={20 + cIdx * 10}
-              y={20 + rIdx * 10}
-              width={9}
-              height={9}
-              rx={1.5}
-              fill="#111827"
-            />
-          ) : null
-        )
-      )}
-    </svg>
-  );
-}
-
-export default function OrderPage({ params }: { params: { orderId: string } }) {
-  const { t, lang } = useT();
-  const { orderId } = params;
-  const [status, setStatus] = useState<Status>('LOADING');
-  const [amount, setAmount] = useState<number | null>(null);
-  const [items, setItems] = useState<OrderItem[]>([]);
-  const [trackingId, setTrackingId] = useState<string | null>(null);
-  const [courierName, setCourierName] = useState<string>('Delhivery Express');
-  const [estimatedDelivery, setEstimatedDelivery] = useState<string | null>(null);
-  const [expiresAt, setExpiresAt] = useState<string | null>(null);
-  const [remainingSec, setRemainingSec] = useState<number>(240);
-  const [qrPayload, setQrPayload] = useState<string>('');
-  const [mock, setMock] = useState(false);
-  const [socketConnected, setSocketConnected] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
+  const [order, setOrder] = useState<OrderResponse | null>(null);
+  const [qrDataUrl, setQrDataUrl] = useState<string>('');
+  const [secondsLeft, setSecondsLeft] = useState<number>(240);
   const [simulating, setSimulating] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [copiedTracking, setCopiedTracking] = useState(false);
+  const [error, setError] = useState('');
 
-  useEffect(() => {
-    const sp = new URLSearchParams(window.location.search);
-    setMock(sp.get('mock') === '1' || true);
-  }, []);
-
-  const loadOrder = useCallback(async () => {
+  const fetchOrder = useCallback(async () => {
+    if (!orderId) return;
     try {
-      const res = await fetch(`${API_URL}/api/orders/${orderId}`, { cache: 'no-store' });
-      if (res.status === 404) {
-        setStatus('NOT_FOUND');
+      const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}`, {
+        cache: 'no-store',
+      });
+      if (!res.ok) {
+        setError('Order not found');
         return;
       }
-      const d = await res.json();
-      if (!d.success) return;
-      setStatus(d.status);
-      setAmount(d.amountPaise);
-      if (Array.isArray(d.items)) setItems(d.items);
-      if (d.trackingId) setTrackingId(d.trackingId);
-      if (d.courierName) setCourierName(d.courierName);
-      if (d.estimatedDelivery) setEstimatedDelivery(d.estimatedDelivery);
-      if (d.expiresAt) {
-        setExpiresAt(d.expiresAt);
-      } else if (d.createdAt) {
-        const exp = new Date(new Date(d.createdAt).getTime() + 240 * 1000).toISOString();
-        setExpiresAt(exp);
+      const data: OrderResponse = await res.json();
+      setOrder(data);
+
+      const rem = Math.max(
+        0,
+        Math.floor((new Date(data.qrExpiresAt).getTime() - Date.now()) / 1000)
+      );
+      setSecondsLeft(rem);
+
+      if (data.status === 'CONFIRMED') {
+        clearCart();
+        setAppliedCoupon('');
       }
-      if (d.qrPayload) setQrPayload(d.qrPayload);
     } catch {
-      /* keep polling */
+      // ignore transient poll failure
     }
-  }, [orderId]);
+  }, [orderId, clearCart, setAppliedCoupon]);
 
   useEffect(() => {
-    loadOrder();
-
-    const socketUrl = API_URL || window.location.origin;
-    const socket = io(socketUrl, {
-      reconnectionAttempts: 3,
-      timeout: 3000,
-    });
-    socket.on('connect', () => {
-      setSocketConnected(true);
-      socket.emit('join', orderId);
-    });
-    socket.on('disconnect', () => setSocketConnected(false));
-    socket.on('payment_confirmed', () => loadOrder());
-    socket.on('tracking_updated', () => loadOrder());
-    socket.on('order_expired', () => loadOrder());
-
-    const poll = setInterval(loadOrder, 3000);
-
-    return () => {
-      clearInterval(poll);
-      socket.disconnect();
-    };
-  }, [orderId, loadOrder]);
+    fetchOrder();
+    const poll = setInterval(fetchOrder, 3000);
+    return () => clearInterval(poll);
+  }, [fetchOrder]);
 
   useEffect(() => {
-    if (status !== 'PENDING' || !expiresAt) return;
-    const updateClock = () => {
-      const diff = Math.max(0, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000));
-      setRemainingSec(diff);
-      if (diff <= 0) {
-        loadOrder();
-      }
-    };
-    updateClock();
-    const timer = setInterval(updateClock, 1000);
+    if (!order?.qrPayload) return;
+    QRCode.toDataURL(order.qrPayload, {
+      width: 260,
+      margin: 2,
+      color: { dark: '#1c1917', light: '#ffffff' },
+    })
+      .then((url) => setQrDataUrl(url))
+      .catch(() => {});
+  }, [order?.qrPayload]);
+
+  useEffect(() => {
+    if (!order || (order.status !== 'PENDING' && order.status !== 'CREATED')) return;
+    const timer = setInterval(() => {
+      setSecondsLeft((prev) => Math.max(0, prev - 1));
+    }, 1000);
     return () => clearInterval(timer);
-  }, [status, expiresAt, loadOrder]);
+  }, [order]);
 
-  async function handleManualRefresh() {
-    setRefreshing(true);
-    await loadOrder();
-    setTimeout(() => setRefreshing(false), 400);
-  }
-
-  async function simulate() {
+  async function handleSimulateWebhook() {
+    if (!orderId) return;
     setSimulating(true);
     try {
-      const res = await fetch(`${API_URL}/api/dev/mock-pay`, {
+      await fetch('/api/dev/mock-pay', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orderId }),
       });
-      const data = await res.json();
-      if (data.trackingId) setTrackingId(data.trackingId);
-      await loadOrder();
+      await fetchOrder();
     } finally {
       setSimulating(false);
     }
   }
 
-  function handleCopyTracking() {
-    if (!trackingId) return;
-    navigator.clipboard?.writeText(trackingId).catch(() => {});
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+  function handleCopyTracking(id: string) {
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(id).catch(() => {});
+    }
+    setCopiedTracking(true);
+    setTimeout(() => setCopiedTracking(false), 2000);
   }
 
-  const mins = String(Math.floor(remainingSec / 60)).padStart(2, '0');
-  const secs = String(remainingSec % 60).padStart(2, '0');
-  const progressPct = Math.min(100, Math.max(0, (remainingSec / 240) * 100));
+  const mm = String(Math.floor(secondsLeft / 60)).padStart(2, '0');
+  const ss = String(secondsLeft % 60).padStart(2, '0');
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex flex-col bg-stone-50">
+        <Header />
+        <main className="flex-1 max-w-2xl mx-auto px-4 py-16 text-center">
+          <h1 className="text-2xl font-bold text-stone-900 mb-3">{error}</h1>
+          <Link
+            href="/"
+            className="inline-flex items-center px-6 py-3 rounded-xl bg-rose-800 text-white font-semibold text-sm"
+          >
+            {t('continueShopping')}
+          </Link>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  const status = order?.status || 'PENDING';
+  const isConfirmed = status === 'CONFIRMED';
+  const isExpired = status === 'EXPIRED' || (secondsLeft <= 0 && !isConfirmed);
+  const isFailed = status === 'FAILED' || status === 'MANUAL_REVIEW';
 
   return (
-    <div className="max-w-xl mx-auto space-y-6">
-      <div className="bg-white rounded-3xl border border-gray-200 shadow-sm p-6 sm:p-8 text-center space-y-5">
-        <div className="flex items-center justify-between text-xs text-gray-500 border-b border-gray-100 pb-3">
-          <span className="inline-flex items-center gap-1.5 font-medium">
+    <div className="min-h-screen flex flex-col bg-stone-50">
+      <Header />
+
+      <main className="flex-1 max-w-3xl mx-auto w-full px-4 sm:px-6 py-8 sm:py-12">
+        <div className="bg-white rounded-3xl border border-stone-200 shadow-sm p-6 sm:p-10">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-200 pb-4 mb-6">
+            <div>
+              <span className="text-xs font-bold uppercase tracking-wider text-stone-400">
+                Order Reference
+              </span>
+              <h1 className="text-xl sm:text-2xl font-extrabold text-stone-900 font-mono">
+                {orderId}
+              </h1>
+              {order?.invoiceNumber && (
+                <p className="text-xs text-stone-500 font-mono mt-0.5">
+                  GST Invoice: <strong>{order.invoiceNumber}</strong>
+                </p>
+              )}
+            </div>
+
             <span
-              className={`w-2 h-2 rounded-full ${
-                socketConnected ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'
+              data-testid="order-status-badge"
+              className={`px-3.5 py-1.5 rounded-full text-xs font-extrabold uppercase tracking-wider ${
+                isConfirmed
+                  ? 'bg-emerald-100 text-emerald-900'
+                  : isExpired
+                    ? 'bg-stone-200 text-stone-700'
+                    : isFailed
+                      ? 'bg-rose-100 text-rose-800'
+                      : 'bg-amber-100 text-amber-900'
               }`}
-            />
-            {socketConnected ? t('liveSocketConnected') : t('liveSocketPolling')}
-          </span>
-          <button
-            type="button"
-            onClick={handleManualRefresh}
-            className="text-brand font-semibold hover:underline"
-          >
-            {refreshing ? t('refreshing') : `↻ ${t('refreshStatus')}`}
-          </button>
-        </div>
-
-        <div>
-          <p className="text-xs font-bold uppercase tracking-wider text-gray-400">{t('orderId')}</p>
-          <h1 className="font-mono text-base sm:text-lg font-bold text-gray-900 break-all mt-0.5">
-            {orderId}
-          </h1>
-          {amount !== null && (
-            <p className="text-3xl font-extrabold text-brand mt-2">{rupees(amount)}</p>
-          )}
-        </div>
-
-        {/* 3-Step Verification Progress Bar */}
-        <div className="grid grid-cols-3 gap-2 text-xs font-semibold pt-1">
-          <div className="p-2 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200">
-            1. {t('stepCreated')} ✓
-          </div>
-          <div
-            className={`p-2 rounded-xl border ${
-              status === 'CONFIRMED'
-                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                : status === 'PENDING'
-                ? 'bg-amber-50 text-amber-800 border-amber-200 animate-pulse'
-                : 'bg-gray-100 text-gray-500 border-gray-200'
-            }`}
-          >
-            2. {t('stepWaiting')}
-          </div>
-          <div
-            className={`p-2 rounded-xl border ${
-              status === 'CONFIRMED'
-                ? 'bg-emerald-600 text-white border-emerald-600'
-                : 'bg-gray-100 text-gray-400 border-gray-200'
-            }`}
-          >
-            3. {t('stepVerified')}
-          </div>
-        </div>
-
-        {status === 'LOADING' && (
-          <p className="text-gray-400 animate-pulse py-6">{t('loading')}</p>
-        )}
-
-        {status === 'PENDING' && (
-          <div className="space-y-4">
-            <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 font-semibold text-sm">
-              ⏳ {t('waitingPayment')}
-            </div>
-
-            <div className="bg-gray-50 rounded-2xl border border-gray-200 p-5 space-y-3">
-              <p className="text-sm font-bold text-gray-900">{t('scanQrTitle')}</p>
-              <DynamicQrSvg
-                payload={qrPayload || `upi://pay?tr=${orderId}&am=${(amount || 0) / 100}`}
-                orderId={orderId}
-              />
-              <p className="text-xs text-gray-500">{t('scanQrSubtitle')}</p>
-
-              <div className="pt-2 space-y-1.5">
-                <div className="flex items-center justify-between text-xs font-bold">
-                  <span className="text-gray-600">{t('sessionTimerLabel')}:</span>
-                  <span className="font-mono text-sm text-brand">
-                    {mins}:{secs}
-                  </span>
-                </div>
-                <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-brand transition-all duration-1000"
-                    style={{ width: `${progressPct}%` }}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {status === 'CONFIRMED' && (
-          <div className="space-y-4">
-            <div
-              role="status"
-              className="p-5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold space-y-1"
             >
-              <p className="text-lg">✅ {t('confirmed')}</p>
-            </div>
+              {isConfirmed ? 'CONFIRMED' : isExpired ? 'EXPIRED' : status}
+            </span>
+          </div>
 
-            {/* Generated Customer Tracking ID Card */}
-            {trackingId && (
-              <div className="bg-gradient-to-br from-pink-50 via-rose-50 to-amber-50 border-2 border-pink-200 rounded-2xl p-5 space-y-3 text-left shadow-sm">
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <div>
-                    <p className="text-xs font-bold uppercase tracking-wider text-brand">
-                      📦 {t('trackingIdLabel')}
-                    </p>
-                    <p className="font-mono text-xl font-extrabold text-gray-900 mt-0.5">
-                      {trackingId}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleCopyTracking}
-                    className="text-xs font-bold bg-white border border-pink-200 text-brand px-3 py-1.5 rounded-xl hover:bg-brand hover:text-white transition-colors"
-                  >
-                    {copied ? t('copied') : `📋 ${t('copyTrackingId')}`}
-                  </button>
-                </div>
+          {/* CONFIRMED STATE WITH CLIENT TRACKING ID + PRINTABLE GST INVOICE */}
+          {isConfirmed && (
+            <div className="text-center py-4">
+              <div className="w-16 h-16 mx-auto rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-3xl mb-4">
+                ✓
+              </div>
+              <h2 className="text-2xl font-extrabold text-stone-900 mb-2">
+                {t('orderConfirmedTitle')}
+              </h2>
+              <p className="text-stone-600 text-sm mb-6 max-w-md mx-auto">
+                {t('orderConfirmedSubtitle')}
+              </p>
 
-                <div className="flex flex-wrap gap-4 text-xs text-gray-600 pt-1">
-                  <span>
-                    <strong>{t('courierPartner')}:</strong> {courierName}
-                  </span>
-                  {estimatedDelivery && (
-                    <span>
-                      <strong>{t('estimatedDelivery')}:</strong> {estimatedDelivery}
+              {/* Tracking ID Box for Customer */}
+              {order?.trackingId && (
+                <div className="max-w-lg mx-auto mb-6 p-5 rounded-2xl bg-gradient-to-br from-emerald-50 via-white to-amber-50 border-2 border-emerald-300 shadow-sm text-left">
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <span className="text-xs font-extrabold uppercase tracking-wider text-emerald-800">
+                      📦 {t('trackingIdLabel')} (Live Shipment Tracking)
                     </span>
-                  )}
-                </div>
+                    <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-700 text-white">
+                      {order.fulfillmentStatus || 'ORDER_PLACED'}
+                    </span>
+                  </div>
 
+                  <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 rounded-xl border border-emerald-200">
+                    <div>
+                      <p
+                        data-testid="order-tracking-id"
+                        className="text-xl sm:text-2xl font-extrabold font-mono text-stone-900 tracking-wide"
+                      >
+                        {order.trackingId}
+                      </p>
+                      <p className="text-xs text-stone-500 mt-0.5">
+                        {t('courierPartnerLabel')}:{' '}
+                        <strong className="text-stone-800">
+                          {order.courierName || 'Delhivery Express'}
+                        </strong>
+                        {order.estimatedDelivery ? ` • ETA: ${order.estimatedDelivery}` : ''}
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleCopyTracking(order.trackingId!)}
+                      className="px-3.5 py-2 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-800 font-bold text-xs transition-colors"
+                    >
+                      {copiedTracking
+                        ? '✓ Copied!'
+                        : lang === 'hi'
+                          ? 'कॉपी करें'
+                          : 'Copy ID'}
+                    </button>
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                    <p className="text-xs text-stone-600">
+                      {lang === 'hi'
+                        ? 'जैसे-जैसे एडमिन आपके ऑर्डर को अपडेट करेगा, आप इसे वेबसाइट पर लाइव ट्रैक कर सकते हैं।'
+                        : 'Track your order live on the website as the admin updates each stage.'}
+                    </p>
+                    <Link
+                      href={`/track?id=${encodeURIComponent(order.trackingId)}`}
+                      className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs shadow-sm transition-colors"
+                    >
+                      <span>📦</span>
+                      <span>
+                        {lang === 'hi' ? 'अभी ऑर्डर ट्रैक करें →' : 'Track Order Live →'}
+                      </span>
+                    </Link>
+                  </div>
+                </div>
+              )}
+
+              {/* Action Buttons: GST Invoice PDF + Continue Shopping */}
+              <div className="flex flex-wrap items-center justify-center gap-3">
                 <Link
-                  href={`/track?id=${encodeURIComponent(trackingId)}`}
-                  className="block w-full text-center bg-brand text-white font-bold text-sm rounded-xl py-3 hover:bg-brand-dark transition-colors shadow-sm"
+                  href={`/order/${orderId}/invoice`}
+                  className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-stone-900 hover:bg-stone-800 text-white font-bold text-sm shadow-sm"
                 >
-                  🚚 {t('trackOrderCta')} ({trackingId}) →
+                  <span>🧾</span>
+                  <span>{t('downloadGstInvoice')}</span>
+                </Link>
+                <Link
+                  href="/"
+                  className="inline-flex items-center px-6 py-3 rounded-xl bg-rose-800 hover:bg-rose-900 text-white font-bold text-sm"
+                >
+                  {t('continueShopping')}
                 </Link>
               </div>
-            )}
-          </div>
-        )}
-
-        {status === 'EXPIRED' && (
-          <div role="alert" className="p-4 rounded-2xl bg-gray-100 border text-gray-700 font-semibold text-sm">
-            ⌛ {t('expired')}
-          </div>
-        )}
-
-        {(status === 'FAILED' || status === 'NOT_FOUND') && (
-          <div role="alert" className="p-4 rounded-2xl bg-red-50 border border-red-200 text-red-700 font-semibold text-sm">
-            ⚠️ {t('failed')}
-          </div>
-        )}
-
-        {mock && status === 'PENDING' && (
-          <div className="bg-pink-50/70 border-2 border-dashed border-brand/50 rounded-2xl p-4 space-y-2.5 text-left">
-            <p className="text-xs text-gray-700 leading-relaxed">{t('sandboxNotice')}</p>
-            <button
-              type="button"
-              disabled={simulating}
-              onClick={simulate}
-              className="w-full bg-brand text-white font-bold text-sm rounded-xl py-2.5 hover:bg-brand-dark disabled:opacity-50 transition-colors"
-            >
-              {simulating ? t('simulating') : `⚡ ${t('simulate')}`}
-            </button>
-          </div>
-        )}
-
-        {items.length > 0 && (
-          <div className="border-t border-gray-100 pt-4 text-left space-y-2">
-            <p className="text-xs font-bold uppercase tracking-wider text-gray-500">
-              {t('orderSummary')}
-            </p>
-            <div className="divide-y divide-gray-100 text-sm">
-              {items.map((it, idx) => (
-                <div key={`${it.id}-${idx}`} className="py-2 flex justify-between">
-                  <span className="text-gray-700">
-                    {lang === 'hi' && it.name_hi ? it.name_hi : it.name}{' '}
-                    {it.size ? `(${it.size})` : ''} × {it.qty}
-                  </span>
-                  <span className="font-semibold text-gray-900">
-                    {rupees(it.price_paise * it.qty)}
-                  </span>
-                </div>
-              ))}
             </div>
-          </div>
-        )}
+          )}
 
-        <div className="pt-2">
-          <Link href="/" className="inline-block text-brand font-semibold underline text-sm">
-            ← {t('continueShopping')}
-          </Link>
+          {/* EXPIRED STATE */}
+          {isExpired && !isConfirmed && (
+            <div className="text-center py-6">
+              <div className="w-16 h-16 mx-auto rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-2xl mb-4">
+                ⏰
+              </div>
+              <h2 className="text-2xl font-extrabold text-stone-900 mb-2">
+                {t('orderExpiredTitle')}
+              </h2>
+              <p className="text-stone-600 text-sm mb-6 max-w-md mx-auto">
+                {t('orderExpiredSubtitle')}
+              </p>
+              <Link
+                href="/checkout"
+                className="inline-flex items-center px-6 py-3 rounded-xl bg-rose-800 hover:bg-rose-900 text-white font-bold text-sm"
+              >
+                {t('checkout')}
+              </Link>
+            </div>
+          )}
+
+          {/* FAILED STATE */}
+          {isFailed && !isConfirmed && (
+            <div className="text-center py-6">
+              <div className="w-16 h-16 mx-auto rounded-full bg-rose-100 text-rose-800 flex items-center justify-center text-2xl mb-4">
+                !
+              </div>
+              <h2 className="text-2xl font-extrabold text-stone-900 mb-2">
+                {t('orderFailedTitle')}
+              </h2>
+              <p className="text-stone-600 text-sm mb-6 max-w-md mx-auto">
+                {t('orderFailedSubtitle')}
+              </p>
+              <Link
+                href="/checkout"
+                className="inline-flex items-center px-6 py-3 rounded-xl bg-rose-800 hover:bg-rose-900 text-white font-bold text-sm"
+              >
+                {t('checkout')}
+              </Link>
+            </div>
+          )}
+
+          {/* PENDING QR PAYMENT STATE */}
+          {!isConfirmed && !isExpired && !isFailed && (
+            <div className="text-center">
+              <h2 className="text-xl font-bold text-stone-900 mb-1">{t('scanQrToPay')}</h2>
+              <p className="text-sm text-stone-500 mb-4">
+                {t('totalPayable')}:{' '}
+                <strong className="text-rose-900 text-lg">
+                  {order ? rupees(order.amountPaise) : '...'}
+                </strong>
+                {order?.couponCode && (
+                  <span className="ml-2 px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 text-xs font-bold">
+                    🎟️ {order.couponCode} (−{rupees(order.discountPaise || 0)})
+                  </span>
+                )}
+              </p>
+
+              <div className="inline-block p-4 rounded-3xl bg-white border-2 border-rose-800/20 shadow-sm mb-4">
+                {qrDataUrl ? (
+                  <img
+                    src={qrDataUrl}
+                    alt="UPI Payment QR Code"
+                    className="w-56 h-56 mx-auto rounded-xl"
+                  />
+                ) : (
+                  <div className="w-56 h-56 flex items-center justify-center text-xs text-stone-400">
+                    Generating QR...
+                  </div>
+                )}
+              </div>
+
+              <div className="mb-5">
+                <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-900 text-xs font-bold">
+                  <span>⏳ {t('qrExpiresIn')}:</span>
+                  <span className="font-mono text-sm">
+                    {mm}:{ss}
+                  </span>
+                </span>
+              </div>
+
+              <p className="text-xs text-stone-500 mb-6 flex items-center justify-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                <span>{t('waitingForConfirmation')}</span>
+              </p>
+
+              {/* Demo Mode Webhook Simulator Button */}
+              <div className="pt-5 border-t border-stone-200">
+                <button
+                  type="button"
+                  disabled={simulating}
+                  onClick={handleSimulateWebhook}
+                  data-testid="simulate-payment-btn"
+                  className="px-5 py-3 rounded-xl bg-emerald-700 hover:bg-emerald-800 disabled:bg-stone-400 text-white text-xs sm:text-sm font-bold shadow-sm transition-colors"
+                >
+                  {simulating ? 'Verifying Webhook...' : `⚡ ${t('simulateSuccessBtn')}`}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Order Items & Delivery Summary */}
+          {order && (
+            <div className="mt-8 pt-6 border-t border-stone-200 text-xs text-stone-600 space-y-2">
+              <div className="flex justify-between">
+                <span className="font-semibold text-stone-800">Customer:</span>
+                <span>
+                  {order.customerName} ({order.phone})
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="font-semibold text-stone-800">Delivery Address:</span>
+                <span className="text-right max-w-xs">{order.address}</span>
+              </div>
+              {order.discountPaise && order.discountPaise > 0 ? (
+                <div className="flex justify-between text-emerald-700 font-bold">
+                  <span>Coupon Applied ({order.couponCode}):</span>
+                  <span>− {rupees(order.discountPaise)}</span>
+                </div>
+              ) : null}
+              <div className="flex justify-between font-bold text-stone-900 text-sm pt-1">
+                <span>Total Amount (Incl. 5% GST):</span>
+                <span>{rupees(order.amountPaise)}</span>
+              </div>
+            </div>
+          )}
         </div>
-      </div>
+      </main>
+
+      <Footer />
     </div>
   );
 }

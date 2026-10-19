@@ -1,190 +1,300 @@
-'use client';
-import { useEffect, useState } from 'react';
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
-import en from '../public/i18n/en.json';
-import hi from '../public/i18n/hi.json';
-import type { Product, ProductCategory } from './catalog';
-
-export type { Product, ProductCategory };
-
-// Relative URLs by default so browser requests work across any preview/proxy host without calling localhost:5000.
-export const API_URL = (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/$/, '');
-
-export type CartLine = {
-  lineKey: string;
-  id: number;
-  name: string;
-  name_hi: string | null;
-  category?: ProductCategory;
-  price_paise: number;
-  image_url: string;
-  size: string;
-  qty: number;
-  maxStock?: number;
-};
-
-type CartState = {
-  lines: CartLine[];
-  add: (p: Product, qty?: number, size?: string) => void;
-  setQty: (id: number, qty: number, size?: string) => void;
-  remove: (id: number, size?: string) => void;
-  syncServerPrices: (serverItems: Array<{ id: number; price_paise: number; stock: number; name?: string }>) => void;
-  clear: () => void;
-};
-
-function makeLineKey(id: number, size?: string): string {
-  return `${id}:${size || 'Free Size'}`;
-}
-
-export const useCart = create<CartState>()(
-  persist(
-    (set) => ({
-      lines: [],
-      add: (p, qty = 1, size) =>
-        set((s) => {
-          if (p.stock <= 0) return s;
-          const chosenSize = size || (p.sizes && p.sizes[0]) || 'Free Size';
-          const lineKey = makeLineKey(p.id, chosenSize);
-          const cap = Math.min(10, Math.max(1, p.stock));
-          const ex = s.lines.find((l) => (l.lineKey || makeLineKey(l.id, l.size)) === lineKey);
-          if (ex) {
-            return {
-              lines: s.lines.map((l) =>
-                (l.lineKey || makeLineKey(l.id, l.size)) === lineKey
-                  ? { ...l, qty: Math.min(l.qty + Math.max(1, qty), cap), maxStock: p.stock }
-                  : l
-              ),
-            };
-          }
-          return {
-            lines: [
-              ...s.lines,
-              {
-                lineKey,
-                id: p.id,
-                name: p.name,
-                name_hi: p.name_hi,
-                category: p.category,
-                price_paise: p.price_paise,
-                image_url: p.image_url,
-                size: chosenSize,
-                qty: Math.min(Math.max(1, qty), cap),
-                maxStock: p.stock,
-              },
-            ],
-          };
-        }),
-      setQty: (id, qty, size) =>
-        set((s) => ({
-          lines: s.lines.map((l) => {
-            const matches = size ? (l.lineKey || makeLineKey(l.id, l.size)) === makeLineKey(id, size) : l.id === id;
-            if (!matches) return l;
-            const cap = Math.min(10, l.maxStock ?? 10);
-            return { ...l, qty: Math.max(1, Math.min(qty, cap)) };
-          }),
-        })),
-      remove: (id, size) =>
-        set((s) => ({
-          lines: s.lines.filter((l) =>
-            size ? (l.lineKey || makeLineKey(l.id, l.size)) !== makeLineKey(id, size) : l.id !== id
-          ),
-        })),
-      syncServerPrices: (serverItems) =>
-        set((s) => {
-          const map = new Map(serverItems.map((i) => [i.id, i]));
-          return {
-            lines: s.lines
-              .map((l) => {
-                const sv = map.get(l.id);
-                if (!sv) return l;
-                if (sv.stock <= 0) return null;
-                return {
-                  ...l,
-                  price_paise: sv.price_paise,
-                  maxStock: sv.stock,
-                  qty: Math.min(l.qty, Math.min(10, sv.stock)),
-                };
-              })
-              .filter(Boolean) as CartLine[],
-          };
-        }),
-      clear: () => set({ lines: [] }),
-    }),
-    { name: 'fashion-cart' }
-  )
-);
+import enDict from '../public/i18n/en.json';
+import hiDict from '../public/i18n/hi.json';
 
 export type Lang = 'en' | 'hi';
-export const useLang = create<{ lang: Lang; setLang: (l: Lang) => void }>()(
-  persist((set) => ({ lang: 'en', setLang: (lang) => set({ lang }) }), { name: 'fashion-lang' })
-);
 
-export const DICTIONARIES: Record<Lang, Record<string, string>> = { en, hi };
+export type CartItem = {
+  id: number;
+  name: string;
+  name_hi?: string;
+  price_paise: number;
+  qty: number;
+  size?: string;
+  image_url?: string;
+  category?: string;
+};
 
-// Avoids server/client mismatch for persisted (localStorage) state.
-export function useHydrated() {
-  const [h, setH] = useState(false);
-  useEffect(() => setH(true), []);
-  return h;
+type Dict = Record<string, string>;
+
+export const DICTIONARIES: Record<Lang, Dict> = {
+  en: enDict,
+  hi: hiDict,
+};
+
+const CART_STORAGE_KEY = 'fashion-store-cart-v1';
+const LANG_STORAGE_KEY = 'fashion-store-lang-v1';
+const WISHLIST_STORAGE_KEY = 'fashion-wishlist-v1';
+const COUPON_STORAGE_KEY = 'fashion-coupon-v1';
+
+function loadInitialCart(): CartItem[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(CART_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (i) =>
+        i &&
+        typeof i.id === 'number' &&
+        typeof i.name === 'string' &&
+        typeof i.price_paise === 'number' &&
+        typeof i.qty === 'number' &&
+        i.qty > 0
+    );
+  } catch {
+    return [];
+  }
 }
 
-// Dictionaries are bundled, so switching language is instant (no network).
-export function useT() {
-  const lang = useLang((s) => s.lang);
-  const hydrated = useHydrated();
-  const active: Lang = hydrated ? lang : 'en';
-  return {
-    t: (key: string, vars?: Record<string, string | number>) => {
-      let str = DICTIONARIES[active][key] ?? DICTIONARIES.en[key] ?? key;
-      if (vars) {
-        for (const [k, v] of Object.entries(vars)) {
-          str = str.replace(`{${k}}`, String(v));
-        }
+function loadInitialLang(): Lang {
+  if (typeof window === 'undefined') return 'en';
+  try {
+    const saved = window.localStorage.getItem(LANG_STORAGE_KEY);
+    return saved === 'hi' ? 'hi' : 'en';
+  } catch {
+    return 'en';
+  }
+}
+
+function loadInitialWishlist(): number[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(WISHLIST_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((id) => typeof id === 'number');
+  } catch {
+    return [];
+  }
+}
+
+function loadInitialCoupon(): string {
+  if (typeof window === 'undefined') return '';
+  try {
+    return window.localStorage.getItem(COUPON_STORAGE_KEY) || '';
+  } catch {
+    return '';
+  }
+}
+
+function saveCart(cart: CartItem[]) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart));
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function saveWishlist(wishlist: number[]) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(WISHLIST_STORAGE_KEY, JSON.stringify(wishlist));
+  } catch {
+    // ignore
+  }
+}
+
+type State = {
+  lang: Lang;
+  hydrated: boolean;
+  cart: CartItem[];
+  wishlist: number[];
+  appliedCoupon: string;
+  hydrate: () => void;
+  setLang: (l: Lang) => void;
+  toggleLang: () => void;
+  addToCart: (item: CartItem) => void;
+  updateQty: (id: number, size: string | undefined, qty: number) => void;
+  removeFromCart: (id: number, size?: string) => void;
+  clearCart: () => void;
+  toggleWishlist: (id: number) => boolean;
+  setAppliedCoupon: (code: string) => void;
+  t: (key: string, vars?: Record<string, string | number>) => string;
+};
+
+export const useStore = create<State>((set, get) => ({
+  lang: 'en',
+  hydrated: false,
+  cart: [],
+  wishlist: [],
+  appliedCoupon: '',
+
+  hydrate: () => {
+    if (get().hydrated) return;
+    set({
+      lang: loadInitialLang(),
+      cart: loadInitialCart(),
+      wishlist: loadInitialWishlist(),
+      appliedCoupon: loadInitialCoupon(),
+      hydrated: true,
+    });
+  },
+
+  setLang: (lang) => {
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.setItem(LANG_STORAGE_KEY, lang);
+      } catch {
+        // ignore
       }
-      return str;
-    },
-    lang: active,
-  };
-}
+    }
+    set({ lang });
+  },
 
-export const rupees = (paise: number) =>
-  `₹${(paise / 100).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+  toggleLang: () => {
+    const next: Lang = get().lang === 'en' ? 'hi' : 'en';
+    get().setLang(next);
+  },
+
+  addToCart: (item) =>
+    set((state) => {
+      const normalizedSize = item.size || 'Free Size';
+      const existing = state.cart.find(
+        (x) => x.id === item.id && (x.size || 'Free Size') === normalizedSize
+      );
+      const nextCart = existing
+        ? state.cart.map((x) =>
+            x.id === item.id && (x.size || 'Free Size') === normalizedSize
+              ? { ...x, qty: Math.min(10, x.qty + item.qty) }
+              : x
+          )
+        : [...state.cart, { ...item, size: normalizedSize, qty: Math.min(10, Math.max(1, item.qty)) }];
+      saveCart(nextCart);
+      return { cart: nextCart };
+    }),
+
+  updateQty: (id, size, qty) =>
+    set((state) => {
+      const normalizedSize = size || 'Free Size';
+      const nextCart =
+        qty <= 0
+          ? state.cart.filter((x) => !(x.id === id && (x.size || 'Free Size') === normalizedSize))
+          : state.cart.map((x) =>
+              x.id === id && (x.size || 'Free Size') === normalizedSize
+                ? { ...x, qty: Math.min(10, qty) }
+                : x
+            );
+      saveCart(nextCart);
+      return { cart: nextCart };
+    }),
+
+  removeFromCart: (id, size) =>
+    set((state) => {
+      const nextCart = size
+        ? state.cart.filter((x) => !(x.id === id && (x.size || 'Free Size') === size))
+        : state.cart.filter((x) => x.id !== id);
+      saveCart(nextCart);
+      return { cart: nextCart };
+    }),
+
+  clearCart: () => {
+    saveCart([]);
+    set({ cart: [] });
+  },
+
+  toggleWishlist: (id) => {
+    const current = get().wishlist;
+    const exists = current.includes(id);
+    const next = exists ? current.filter((x) => x !== id) : [...current, id];
+    saveWishlist(next);
+    set({ wishlist: next });
+    return !exists;
+  },
+
+  setAppliedCoupon: (code) => {
+    const clean = (code || '').trim().toUpperCase();
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.setItem(COUPON_STORAGE_KEY, clean);
+      } catch {
+        // ignore
+      }
+    }
+    set({ appliedCoupon: clean });
+  },
+
+  t: (key, vars) => {
+    const lang = get().lang;
+    const dict = DICTIONARIES[lang] || DICTIONARIES.en;
+    let template = dict[key] || DICTIONARIES.en[key] || key;
+    if (vars) {
+      for (const [k, v] of Object.entries(vars)) {
+        template = template.replace(`{${k}}`, String(v));
+      }
+    }
+    return template;
+  },
+}));
+
+export const rupees = (paise: number): string => {
+  const inr = (Number(paise) || 0) / 100;
+  return `₹${inr.toLocaleString('en-IN', {
+    minimumFractionDigits: inr % 1 === 0 ? 0 : 2,
+    maximumFractionDigits: 2,
+  })}`;
+};
 
 export function validateIndianPhone(phone: string): boolean {
-  return /^[6-9][0-9]{9}$/.test(phone.trim());
+  const cleaned = phone.replace(/\D/g, '');
+  return /^[6-9]\d{9}$/.test(cleaned);
 }
 
 export function validatePincode(pincode: string): boolean {
-  return /^[1-9][0-9]{5}$/.test(pincode.trim());
+  return /^[1-9]\d{5}$/.test(pincode.trim());
 }
 
-export type CheckoutFormInput = {
+export function validateCheckoutForm(input: {
   name: string;
   phone: string;
   address: string;
-  city?: string;
-  state?: string;
   pincode?: string;
-};
+}): { valid: boolean; errors: Record<string, string> } {
+  const errors: Record<string, string> = {};
+  if (!input.name || input.name.trim().length < 2) {
+    errors.name = 'Please enter a valid full name (at least 2 characters).';
+  }
+  if (!validateIndianPhone(input.phone || '')) {
+    errors.phone = 'Please enter a valid 10-digit Indian mobile number starting with 6–9.';
+  }
+  if (input.pincode !== undefined && input.pincode.trim() !== '' && !validatePincode(input.pincode)) {
+    errors.pincode = 'Please enter a valid 6-digit Indian PIN code.';
+  }
+  if (!input.address || input.address.trim().length < 10) {
+    errors.address = 'Please enter a complete delivery address (at least 10 characters).';
+  }
+  return {
+    valid: Object.keys(errors).length === 0,
+    errors,
+  };
+}
 
-export function validateCheckoutForm(input: CheckoutFormInput): { valid: boolean; error?: string } {
-  const name = (input.name || '').trim();
-  const phone = (input.phone || '').trim();
-  const address = (input.address || '').trim();
-  const pincode = (input.pincode || '').trim();
+export function buildWhatsAppShareUrl(product: {
+  id: number;
+  name: string;
+  name_hi?: string;
+  price_paise: number;
+}): string {
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const text = `✨ Check out *${product.name}* (${product.name_hi || ''}) for just *${rupees(
+    product.price_paise
+  )}* at Kranti Classes Ethnic Wear!\n🛍️ View here: ${origin}/products/${product.id}`;
+  return `https://wa.me/?text=${encodeURIComponent(text)}`;
+}
 
-  if (name.length < 2 || name.length > 120) {
-    return { valid: false, error: 'Please enter a valid full name (2–120 characters).' };
-  }
-  if (!validateIndianPhone(phone)) {
-    return { valid: false, error: 'Please enter a valid 10-digit Indian mobile number starting with 6–9.' };
-  }
-  if (pincode && !validatePincode(pincode)) {
-    return { valid: false, error: 'Please enter a valid 6-digit PIN code.' };
-  }
-  if (address.length < 10 || address.length > 500) {
-    return { valid: false, error: 'Please enter a complete delivery address (at least 10 characters).' };
-  }
-  return { valid: true };
+export function buildWhatsAppOrderUrl(product: {
+  id: number;
+  name: string;
+  price_paise: number;
+  size?: string;
+}): string {
+  const text = `नमस्ते / Hello Kranti Classes Boutique! 🙏\nI want to order / inquire about:\n• *Product*: ${
+    product.name
+  } (#${product.id})\n• *Price*: ${rupees(product.price_paise)}\n• *Size*: ${
+    product.size || 'Free Size'
+  }\nPlease share availability & UPI details.`;
+  return `https://wa.me/919876543210?text=${encodeURIComponent(text)}`;
 }

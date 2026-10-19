@@ -1,100 +1,102 @@
 'use client';
-import { FormEvent, useMemo, useState } from 'react';
+
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import {
-  API_URL,
-  rupees,
-  useCart,
-  useHydrated,
-  useT,
-  validateCheckoutForm,
-} from '../../lib/store';
-
-declare global {
-  interface Window {
-    Razorpay?: any;
-  }
-}
-
-function loadRazorpayScript(): Promise<boolean> {
-  return new Promise((resolve) => {
-    if (window.Razorpay) return resolve(true);
-    const s = document.createElement('script');
-    s.src = 'https://checkout.razorpay.com/v1/checkout.js';
-    s.onload = () => resolve(true);
-    s.onerror = () => resolve(false);
-    document.body.appendChild(s);
-  });
-}
+import Header from '../../components/Header';
+import Footer from '../../components/Footer';
+import { rupees, useStore, validateCheckoutForm } from '../../lib/store';
 
 export default function CheckoutPage() {
-  const { t, lang } = useT();
   const router = useRouter();
-  const hydrated = useHydrated();
-  const { lines, clear } = useCart();
+  const { cart, lang, appliedCoupon, setAppliedCoupon, hydrate, t } = useStore();
 
-  const [form, setForm] = useState({
-    name: '',
-    phone: '',
-    address: '',
-    city: 'Jaipur',
-    state: 'Rajasthan',
-    pincode: '',
-  });
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [pincode, setPincode] = useState('');
+  const [cityState, setCityState] = useState('Jaipur, Rajasthan');
+  const [address, setAddress] = useState('');
+  const [couponInput, setCouponInput] = useState('');
+  const [serverQuote, setServerQuote] = useState<{
+    subtotalPaise: number;
+    discountPaise: number;
+    couponCode: string | null;
+    couponMessage?: string;
+    gstPaise: number;
+    totalPaise: number;
+  } | null>(null);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [serverError, setServerError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  // Stable idempotency key per checkout form mount to prevent duplicate order creation
-  const idempotencyKey = useMemo(
-    () => `idem_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
-    []
-  );
+  useEffect(() => {
+    hydrate();
+  }, [hydrate]);
 
-  if (!hydrated) return <p className="text-gray-500 py-10 text-center">{t('loading')}</p>;
+  useEffect(() => {
+    setCouponInput(appliedCoupon || '');
+  }, [appliedCoupon]);
 
-  if (lines.length === 0) {
-    return (
-      <div className="max-w-lg mx-auto bg-white rounded-3xl border p-10 text-center space-y-4 my-8">
-        <p className="text-gray-600 font-medium">{t('cartEmpty')}</p>
-        <Link href="/" className="inline-block bg-brand text-white text-sm font-semibold px-6 py-3 rounded-xl">
-          {t('continueShopping')}
-        </Link>
-      </div>
-    );
-  }
+  const clientSubtotalPaise = cart.reduce((acc, item) => acc + item.price_paise * item.qty, 0);
 
-  const total = lines.reduce((s, l) => s + l.price_paise * l.qty, 0);
+  useEffect(() => {
+    if (cart.length === 0) {
+      setServerQuote(null);
+      return;
+    }
+    fetch('/api/cart/validate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        items: cart.map((i) => ({ id: i.id, qty: i.qty, size: i.size || 'Free Size' })),
+        couponCode: appliedCoupon || null,
+      }),
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.success && typeof d.totalPaise === 'number') {
+          setServerQuote({
+            subtotalPaise: d.subtotalPaise ?? d.totalPaise,
+            discountPaise: d.discountPaise ?? 0,
+            couponCode: d.couponCode ?? null,
+            couponMessage: d.couponMessage,
+            gstPaise: d.gstPaise ?? Math.round((d.totalPaise * 5) / 105),
+            totalPaise: d.totalPaise,
+          });
+        }
+      })
+      .catch(() => {});
+  }, [cart, appliedCoupon]);
 
-  async function submit(e: FormEvent) {
+  const handleApplyCoupon = (code?: string) => {
+    const clean = (code ?? couponInput).trim().toUpperCase();
+    setCouponInput(clean);
+    setAppliedCoupon(clean);
+  };
+
+  async function submitOrder(e: React.FormEvent) {
     e.preventDefault();
-    setError('');
+    setServerError('');
 
-    const fullAddress = [
-      form.address.trim(),
-      form.city.trim(),
-      form.state.trim(),
-      form.pincode.trim() ? `PIN: ${form.pincode.trim()}` : '',
-    ]
-      .filter(Boolean)
-      .join(', ');
-
-    const validation = validateCheckoutForm({
-      name: form.name,
-      phone: form.phone,
-      address: fullAddress,
-      pincode: form.pincode,
+    const fullAddr = `${address.trim()}, ${cityState.trim()}${pincode ? `, PIN: ${pincode.trim()}` : ''}`;
+    const check = validateCheckoutForm({
+      name,
+      phone,
+      address: fullAddr,
+      pincode,
     });
 
-    if (!validation.valid) {
-      setError(validation.error || t('errorGeneric'));
+    if (!check.valid) {
+      setErrors(check.errors);
       return;
     }
 
-    setBusy(true);
+    setErrors({});
+    setLoading(true);
+
     try {
-      // Only product IDs and quantities are sent; server computes authoritative price from DB.
-      const res = await fetch(`${API_URL}/api/create-order`, {
+      const idempotencyKey = `idem_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+      const res = await fetch('/api/create-order', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -102,227 +104,289 @@ export default function CheckoutPage() {
         },
         body: JSON.stringify({
           customer: {
-            name: form.name.trim(),
-            phone: form.phone.trim(),
-            address: fullAddress,
+            name: name.trim(),
+            phone: phone.replace(/\D/g, ''),
+            address: fullAddr,
           },
-          items: lines.map((l) => ({ id: l.id, qty: l.qty, size: l.size })),
+          items: cart.map((i) => ({ id: i.id, qty: i.qty, size: i.size || 'Free Size' })),
+          couponCode: appliedCoupon || null,
+          idempotencyKey,
         }),
       });
+
       const data = await res.json();
-      if (!res.ok || !data.success) {
-        setError(data.error || data.message || t('errorGeneric'));
-        setBusy(false);
+      if (!res.ok || !data.success || !data.orderId) {
+        setServerError(data.error || 'Could not create order. Please check your details.');
+        setLoading(false);
         return;
       }
 
-      if (data.paymentMode === 'mock') {
-        clear();
-        router.push(`/order/${data.orderId}?mock=1`);
-        return;
-      }
-
-      const loaded = await loadRazorpayScript();
-      if (!loaded || !window.Razorpay) {
-        setError(t('errorGeneric'));
-        setBusy(false);
-        return;
-      }
-      const rzp = new window.Razorpay({
-        key: data.razorpayKeyId,
-        amount: data.amountPaise,
-        currency: data.currency,
-        order_id: data.gatewayOrderId,
-        name: 'Kurti Corner',
-        prefill: { name: form.name, contact: form.phone },
-        // Browser callback is NOT trusted. Order is confirmed ONLY by signed server webhook.
-        handler: () => {
-          clear();
-          router.push(`/order/${data.orderId}`);
-        },
-        modal: { ondismiss: () => setBusy(false) },
-      });
-      rzp.open();
+      router.push(`/order/${data.orderId}`);
     } catch {
-      setError(t('errorGeneric'));
-      setBusy(false);
+      setServerError('Network error while creating order. Please try again.');
+      setLoading(false);
     }
   }
 
-  const inputClass =
-    'w-full border border-gray-300 rounded-xl px-3.5 py-2.5 text-sm bg-white focus:border-brand focus:outline-none';
+  const displaySubtotal = serverQuote?.subtotalPaise ?? clientSubtotalPaise;
+  const displayDiscount = serverQuote?.discountPaise ?? 0;
+  const displayTotal = serverQuote?.totalPaise ?? clientSubtotalPaise;
+  const displayGst = serverQuote?.gstPaise ?? Math.round((displayTotal * 5) / 105);
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-      {/* Left: Delivery & Payment Form */}
-      <form
-        onSubmit={submit}
-        className="lg:col-span-7 bg-white rounded-3xl border border-gray-200 p-6 sm:p-8 space-y-5 shadow-sm"
-      >
-        <h1 className="text-xl sm:text-2xl font-extrabold text-gray-900">{t('yourDetails')}</h1>
+    <div className="min-h-screen flex flex-col bg-stone-50">
+      <Header />
 
-        <div className="space-y-1.5">
-          <label htmlFor="checkout-name" className="block text-xs font-bold uppercase tracking-wider text-gray-700">
-            {t('name')} *
-          </label>
-          <input
-            id="checkout-name"
-            className={inputClass}
-            required
-            minLength={2}
-            maxLength={120}
-            placeholder={t('namePlaceholder')}
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-          />
-        </div>
+      <main className="flex-1 max-w-6xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
+        <h1 className="text-2xl sm:text-3xl font-extrabold text-stone-900 mb-6">
+          {t('checkout')}
+        </h1>
 
-        <div className="space-y-1.5">
-          <label htmlFor="checkout-phone" className="block text-xs font-bold uppercase tracking-wider text-gray-700">
-            {t('phone')} *
-          </label>
-          <input
-            id="checkout-phone"
-            className={inputClass}
-            required
-            inputMode="numeric"
-            pattern="[6-9][0-9]{9}"
-            maxLength={10}
-            placeholder={t('phonePlaceholder')}
-            value={form.phone}
-            onChange={(e) => setForm({ ...form, phone: e.target.value.replace(/\D/g, '') })}
-          />
-          <p className="text-[11px] text-gray-500">{t('phoneHint')}</p>
-        </div>
-
-        <div className="space-y-1.5">
-          <label htmlFor="checkout-address" className="block text-xs font-bold uppercase tracking-wider text-gray-700">
-            {t('address')} *
-          </label>
-          <textarea
-            id="checkout-address"
-            className={inputClass}
-            required
-            minLength={10}
-            maxLength={400}
-            rows={3}
-            placeholder={t('addressPlaceholder')}
-            value={form.address}
-            onChange={(e) => setForm({ ...form, address: e.target.value })}
-          />
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div className="space-y-1.5">
-            <label htmlFor="checkout-city" className="block text-xs font-bold uppercase tracking-wider text-gray-700">
-              {t('city')}
-            </label>
-            <input
-              id="checkout-city"
-              className={inputClass}
-              placeholder={t('cityPlaceholder')}
-              value={form.city}
-              onChange={(e) => setForm({ ...form, city: e.target.value })}
-            />
+        {cart.length === 0 ? (
+          <div className="bg-white rounded-3xl border border-stone-200 p-10 text-center">
+            <p className="text-stone-600 mb-4">{t('emptyCartTitle')}</p>
+            <Link
+              href="/"
+              className="inline-flex items-center px-6 py-3 rounded-xl bg-rose-800 text-white font-semibold text-sm"
+            >
+              {t('continueShopping')}
+            </Link>
           </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* Checkout Form */}
+            <form
+              onSubmit={submitOrder}
+              noValidate
+              className="lg:col-span-2 bg-white rounded-3xl border border-stone-200 p-6 sm:p-8 shadow-sm space-y-5"
+            >
+              <div className="flex items-center justify-between border-b border-stone-200 pb-3">
+                <h2 className="text-lg font-bold text-stone-900">{t('customerDetails')}</h2>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setName('Priya Sharma');
+                    setPhone('9876543210');
+                    setPincode('302001');
+                    setCityState('Jaipur, Rajasthan');
+                    setAddress('Flat 102, Rose Residency, MI Road, Near Ajmeri Gate');
+                  }}
+                  className="text-xs font-semibold text-rose-800 hover:underline"
+                >
+                  {lang === 'hi' ? 'डेमो पता भरें (Auto-fill Demo)' : 'Auto-fill Demo Address'}
+                </button>
+              </div>
 
-          <div className="space-y-1.5">
-            <label htmlFor="checkout-state" className="block text-xs font-bold uppercase tracking-wider text-gray-700">
-              {t('state')}
-            </label>
-            <input
-              id="checkout-state"
-              className={inputClass}
-              placeholder={t('statePlaceholder')}
-              value={form.state}
-              onChange={(e) => setForm({ ...form, state: e.target.value })}
-            />
-          </div>
+              {serverError && (
+                <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-sm font-medium">
+                  {serverError}
+                </div>
+              )}
 
-          <div className="space-y-1.5">
-            <label htmlFor="checkout-pincode" className="block text-xs font-bold uppercase tracking-wider text-gray-700">
-              {t('pincode')}
-            </label>
-            <input
-              id="checkout-pincode"
-              className={inputClass}
-              inputMode="numeric"
-              pattern="[1-9][0-9]{5}"
-              maxLength={6}
-              placeholder={t('pincodePlaceholder')}
-              value={form.pincode}
-              onChange={(e) => setForm({ ...form, pincode: e.target.value.replace(/\D/g, '') })}
-            />
-          </div>
-        </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-stone-600 mb-1.5">
+                    {t('fullName')} *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder={t('fullNamePlaceholder')}
+                    className="w-full px-4 py-2.5 rounded-xl border border-stone-300 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
+                  />
+                  {errors.name && <p className="text-xs text-rose-700 mt-1">{errors.name}</p>}
+                </div>
 
-        {/* Payment Method Box */}
-        <div className="bg-pink-50/70 border border-pink-200 rounded-2xl p-4 space-y-1.5">
-          <p className="text-xs font-bold uppercase tracking-wider text-brand">{t('paymentMethod')}</p>
-          <p className="text-sm font-bold text-gray-900 flex items-center gap-2">
-            <span>⚡</span>
-            <span>{t('paymentMethodQr')}</span>
-          </p>
-          <p className="text-xs text-gray-600 leading-relaxed">{t('paymentMethodDesc')}</p>
-        </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-stone-600 mb-1.5">
+                    {t('phoneNumber')} *
+                  </label>
+                  <input
+                    type="tel"
+                    required
+                    maxLength={10}
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
+                    placeholder={t('phonePlaceholder')}
+                    className="w-full px-4 py-2.5 rounded-xl border border-stone-300 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
+                  />
+                  {errors.phone && <p className="text-xs text-rose-700 mt-1">{errors.phone}</p>}
+                </div>
+              </div>
 
-        {error && (
-          <div role="alert" className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl p-3 font-medium">
-            ⚠️ {error}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-stone-600 mb-1.5">
+                    {t('pincode')}
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={6}
+                    value={pincode}
+                    onChange={(e) => setPincode(e.target.value.replace(/\D/g, ''))}
+                    placeholder={t('pincodePlaceholder')}
+                    className="w-full px-4 py-2.5 rounded-xl border border-stone-300 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
+                  />
+                  {errors.pincode && <p className="text-xs text-rose-700 mt-1">{errors.pincode}</p>}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-stone-600 mb-1.5">
+                    {t('cityState')}
+                  </label>
+                  <input
+                    type="text"
+                    value={cityState}
+                    onChange={(e) => setCityState(e.target.value)}
+                    placeholder={t('cityStatePlaceholder')}
+                    className="w-full px-4 py-2.5 rounded-xl border border-stone-300 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-stone-600 mb-1.5">
+                  {t('fullAddress')} *
+                </label>
+                <textarea
+                  rows={3}
+                  required
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  placeholder={t('addressPlaceholder')}
+                  className="w-full px-4 py-2.5 rounded-xl border border-stone-300 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
+                />
+                {errors.address && <p className="text-xs text-rose-700 mt-1">{errors.address}</p>}
+              </div>
+
+              {/* Payment Mode Info */}
+              <div className="p-4 rounded-2xl bg-amber-50/80 border border-amber-200">
+                <div className="flex items-center gap-2 font-bold text-stone-900 text-sm">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-600" />
+                  <span>{t('paymentMethodTitle')}</span>
+                </div>
+                <p className="text-xs text-stone-600 mt-1">{t('paymentMethodDesc')}</p>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-4 px-6 rounded-xl bg-rose-800 hover:bg-rose-900 disabled:bg-stone-400 text-white font-bold text-base shadow-sm transition-colors"
+              >
+                {loading
+                  ? lang === 'hi'
+                    ? 'ऑर्डर बनाया जा रहा है...'
+                    : 'Creating Secure UPI Order...'
+                  : `${t('payNow')} (${rupees(displayTotal)})`}
+              </button>
+            </form>
+
+            {/* Summary Sidebar + Quick Coupon Switcher */}
+            <aside className="bg-white rounded-3xl border border-stone-200 p-6 shadow-sm h-fit space-y-4">
+              <h2 className="text-lg font-bold text-stone-900 border-b border-stone-200 pb-3">
+                {t('orderSummary')}
+              </h2>
+
+              <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
+                {cart.map((item) => (
+                  <div
+                    key={`${item.id}-${item.size}`}
+                    className="flex justify-between text-xs gap-2"
+                  >
+                    <span className="text-stone-700">
+                      {lang === 'hi' && item.name_hi ? item.name_hi : item.name} ({item.size}) ×{' '}
+                      {item.qty}
+                    </span>
+                    <span className="font-semibold text-stone-900 shrink-0">
+                      {rupees(item.price_paise * item.qty)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Quick Promo Code Selector on Checkout */}
+              <div className="p-3.5 rounded-2xl bg-stone-50 border border-stone-200">
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-500 mb-1.5">
+                  🎟️ {t('couponCode')}
+                </label>
+                <div className="flex gap-1.5">
+                  <input
+                    type="text"
+                    value={couponInput}
+                    onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                    placeholder="DIWALI20 / FIRST10"
+                    className="flex-1 px-2.5 py-1.5 rounded-lg border border-stone-300 text-xs font-mono font-bold uppercase bg-white"
+                  />
+                  {appliedCoupon ? (
+                    <button
+                      type="button"
+                      onClick={() => handleApplyCoupon('')}
+                      className="px-2.5 py-1.5 rounded-lg bg-stone-200 text-stone-800 text-xs font-bold"
+                    >
+                      ✕
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleApplyCoupon()}
+                      className="px-3 py-1.5 rounded-lg bg-rose-800 text-white text-xs font-bold"
+                    >
+                      Apply
+                    </button>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {['FIRST10', 'DIWALI20', 'JAIPUR15', 'ROYAL250'].map((code) => (
+                    <button
+                      key={code}
+                      type="button"
+                      onClick={() => handleApplyCoupon(code)}
+                      className={`px-2 py-0.5 rounded text-[11px] font-mono font-bold border transition ${
+                        appliedCoupon === code
+                          ? 'bg-emerald-700 text-white border-emerald-700'
+                          : 'bg-white text-rose-800 border-rose-200 hover:bg-rose-50'
+                      }`}
+                    >
+                      {code}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="border-t border-stone-200 pt-3 space-y-2 text-sm">
+                <div className="flex justify-between text-stone-600">
+                  <span>{t('subtotal')}</span>
+                  <span>{rupees(displaySubtotal)}</span>
+                </div>
+                {displayDiscount > 0 && (
+                  <div className="flex justify-between text-emerald-700 font-semibold">
+                    <span>
+                      {t('discountLabel')} ({serverQuote?.couponCode || appliedCoupon})
+                    </span>
+                    <span>− {rupees(displayDiscount)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-stone-600">
+                  <span>{t('shipping')}</span>
+                  <span className="text-emerald-700 font-bold">{t('free')}</span>
+                </div>
+                <div className="flex justify-between text-xs text-stone-500">
+                  <span>Included GST (5% — CGST 2.5% + SGST 2.5%)</span>
+                  <span>{rupees(displayGst)}</span>
+                </div>
+                <div className="border-t border-stone-200 pt-3 flex justify-between text-base font-extrabold text-stone-900">
+                  <span>{t('totalPayable')}</span>
+                  <span className="text-rose-900 text-xl">{rupees(displayTotal)}</span>
+                </div>
+              </div>
+            </aside>
           </div>
         )}
+      </main>
 
-        <button
-          type="submit"
-          disabled={busy}
-          className="w-full bg-brand text-white font-bold text-sm rounded-xl py-3.5 hover:bg-brand-dark disabled:bg-gray-300 transition-colors shadow-sm"
-        >
-          {busy ? t('processing') : `${t('payNow')} (${rupees(total)})`}
-        </button>
-      </form>
-
-      {/* Right: Order Summary Sidebar */}
-      <aside className="lg:col-span-5 bg-white rounded-3xl border border-gray-200 p-6 space-y-4 shadow-sm">
-        <div className="flex items-center justify-between">
-          <h2 className="font-bold text-lg text-gray-900">{t('orderSummary')}</h2>
-          <Link href="/cart" className="text-xs font-semibold text-brand hover:underline">
-            {t('cart')} ({lines.reduce((n, l) => n + l.qty, 0)})
-          </Link>
-        </div>
-
-        <div className="divide-y divide-gray-100 max-h-80 overflow-y-auto pr-1">
-          {lines.map((l) => {
-            const title = lang === 'hi' && l.name_hi ? l.name_hi : l.name;
-            const lineKey = l.lineKey || `${l.id}:${l.size}`;
-            return (
-              <div key={lineKey} className="py-3 flex items-center justify-between gap-3 text-sm">
-                <div>
-                  <p className="font-semibold text-gray-900">{title}</p>
-                  <p className="text-xs text-gray-500">
-                    {t('size')}: {l.size} × {l.qty}
-                  </p>
-                </div>
-                <span className="font-bold text-gray-900">{rupees(l.price_paise * l.qty)}</span>
-              </div>
-            );
-          })}
-        </div>
-
-        <div className="border-t border-gray-200 pt-4 space-y-2 text-sm">
-          <div className="flex justify-between text-gray-600">
-            <span>{t('subtotal')}</span>
-            <span>{rupees(total)}</span>
-          </div>
-          <div className="flex justify-between text-gray-600">
-            <span>{t('delivery')}</span>
-            <span className="text-emerald-700 font-semibold">{t('deliveryFree')}</span>
-          </div>
-          <div className="flex justify-between text-lg font-extrabold text-gray-900 pt-2 border-t">
-            <span>{t('total')}</span>
-            <span className="text-brand">{rupees(total)}</span>
-          </div>
-        </div>
-      </aside>
+      <Footer />
     </div>
   );
 }

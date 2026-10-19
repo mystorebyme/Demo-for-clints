@@ -1,338 +1,324 @@
 'use client';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import HeroSection from '../components/HeroSection';
+
+import React, { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
+import Header from '../components/Header';
+import Footer from '../components/Footer';
 import ProductCard from '../components/ProductCard';
 import {
   DEMO_PRODUCTS,
-  enrichProduct,
   filterAndSortProducts,
   paginateProducts,
   Product,
   ProductCategory,
   SortOption,
 } from '../lib/catalog';
-import { API_URL, useT } from '../lib/store';
+import { useStore } from '../lib/store';
 
-const CATS = ['all', 'kurti', 'bag', 'accessory'] as const;
-const PAGE_SIZE = 8;
+export default function HomePage() {
+  const { lang, appliedCoupon, setAppliedCoupon, t } = useStore();
 
-export default function ShopPage() {
-  const { t, lang } = useT();
-  const [products, setProducts] = useState<Product[] | null>(null);
-  const [error, setError] = useState(false);
-  const [cat, setCat] = useState<(typeof CATS)[number]>('all');
-  const [q, setQ] = useState('');
+  const [products, setProducts] = useState<Product[]>(DEMO_PRODUCTS);
+  const [category, setCategory] = useState<ProductCategory | 'all'>('all');
+  const [query, setQuery] = useState('');
   const [sort, setSort] = useState<SortOption>('featured');
   const [inStockOnly, setInStockOnly] = useState(false);
   const [page, setPage] = useState(1);
 
-  const loadProducts = useCallback(async () => {
-    setError(false);
-    try {
-      const res = await fetch(`${API_URL}/api/products`, { cache: 'no-store' });
-      if (!res.ok) throw new Error('Failed to load');
-      const d = await res.json();
-      if (Array.isArray(d.products) && d.products.length > 0) {
-        setProducts(d.products.map((p: Product) => enrichProduct(p)));
-      } else {
-        setProducts(DEMO_PRODUCTS);
-      }
-    } catch {
-      setError(true);
-    }
+  useEffect(() => {
+    fetch('/api/products', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data.products) && data.products.length > 0) {
+          setProducts(data.products);
+        }
+      })
+      .catch(() => {
+        // Keep fallback DEMO_PRODUCTS
+      });
   }, []);
 
-  useEffect(() => {
-    loadProducts();
-  }, [loadProducts]);
+  const filtered = useMemo(
+    () =>
+      filterAndSortProducts(products, {
+        category,
+        query,
+        sort,
+        inStockOnly,
+      }),
+    [products, category, query, sort, inStockOnly]
+  );
 
-  // Support category selection from URL query string (e.g. /?category=kurti)
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const syncFromUrl = () => {
-      const param = new URLSearchParams(window.location.search).get('category');
-      if (param === 'kurti' || param === 'bag' || param === 'accessory' || param === 'all') {
-        setCat(param);
-        setPage(1);
-      }
-    };
-    syncFromUrl();
-    window.addEventListener('popstate', syncFromUrl);
-    return () => window.removeEventListener('popstate', syncFromUrl);
-  }, []);
+  const paginated = useMemo(() => paginateProducts(filtered, page, 8), [filtered, page]);
 
-  // Reset pagination when filter criteria change
   useEffect(() => {
     setPage(1);
-  }, [cat, q, sort, inStockOnly]);
-
-  const filtered = useMemo(() => {
-    if (!products) return [];
-    return filterAndSortProducts(products, {
-      category: cat,
-      query: q,
-      sort,
-      inStockOnly,
-    });
-  }, [products, cat, q, sort, inStockOnly]);
-
-  const paginated = useMemo(() => paginateProducts(filtered, page, PAGE_SIZE), [filtered, page]);
-
-  const categoryCounts = useMemo(() => {
-    const counts: Record<string, number> = { all: 0, kurti: 0, bag: 0, accessory: 0 };
-    if (!products) return counts;
-    counts.all = products.length;
-    for (const p of products) {
-      counts[p.category] = (counts[p.category] || 0) + 1;
-    }
-    return counts;
-  }, [products]);
-
-  const resetFilters = () => {
-    setCat('all');
-    setQ('');
-    setSort('featured');
-    setInStockOnly(false);
-    setPage(1);
-  };
+  }, [category, query, sort, inStockOnly]);
 
   return (
-    <div className="space-y-10">
-      {/* Hero Banner */}
-      <HeroSection
-        onSelectCategory={(selected: 'all' | ProductCategory) => {
-          setCat(selected);
-          setPage(1);
-        }}
-      />
+    <div className="min-h-screen flex flex-col">
+      <Header />
 
-      {/* Category Highlights */}
-      <section aria-labelledby="categories-heading" className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 id="categories-heading" className="text-xl sm:text-2xl font-bold text-gray-900">
-            {t('shopByCategory')}
-          </h2>
+      {/* Demo Notice Strip */}
+      <div className="bg-amber-50 border-b border-amber-200/80 text-amber-950 text-xs py-2 px-4">
+        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <span className="px-2 py-0.5 rounded bg-amber-300 font-bold uppercase tracking-wider text-[10px]">
+              DEMO
+            </span>
+            <span>{t('demoNoticeBanner')}</span>
+          </div>
+          <div className="flex items-center gap-3 font-bold">
+            <Link href="/order/ORDDEMO1001/invoice" className="text-rose-800 hover:underline">
+              🧾 Sample GST Bill
+            </Link>
+            <span>•</span>
+            <Link href="/track?id=TRK-KC-1001" className="text-rose-800 hover:underline">
+              📦 Sample Live Tracking
+            </Link>
+            <span>•</span>
+            <Link href="/admin" className="text-rose-800 hover:underline">
+              ⚙️ Admin Stock & Charts
+            </Link>
+          </div>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {(
-            [
-              { key: 'kurti', icon: '👗', descKey: 'categoryKurtiDesc', bg: 'from-rose-50 to-pink-50' },
-              { key: 'bag', icon: '👜', descKey: 'categoryBagDesc', bg: 'from-amber-50 to-orange-50' },
-              { key: 'accessory', icon: '💍', descKey: 'categoryAccessoryDesc', bg: 'from-purple-50 to-pink-50' },
-            ] as const
-          ).map((item) => (
-            <button
-              key={item.key}
-              type="button"
-              onClick={() => {
-                setCat(item.key);
-                document.getElementById('catalog')?.scrollIntoView({ behavior: 'smooth' });
-              }}
-              className={`text-left p-5 rounded-2xl border transition-all bg-gradient-to-br ${item.bg} ${
-                cat === item.key ? 'border-brand ring-2 ring-brand/20 shadow-sm' : 'border-gray-200 hover:border-brand/50'
-              }`}
-            >
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-3xl" aria-hidden="true">
-                  {item.icon}
-                </span>
-                <span className="text-xs font-bold bg-white px-2.5 py-1 rounded-full text-brand border border-pink-100">
-                  {categoryCounts[item.key]} {t('itemsLabel')}
-                </span>
-              </div>
-              <h3 className="font-bold text-base text-gray-900">{t(item.key)}</h3>
-              <p className="text-xs text-gray-600 mt-1 leading-relaxed">{t(item.descKey)}</p>
-            </button>
-          ))}
+      </div>
+
+      {/* Hero Section */}
+      <section className="relative bg-gradient-to-br from-rose-950 via-rose-900 to-amber-900 text-white overflow-hidden">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-14 flex flex-col md:flex-row items-center justify-between gap-8">
+          <div className="max-w-2xl">
+            <span className="inline-block px-3 py-1 rounded-full bg-amber-400/20 border border-amber-300/40 text-amber-200 text-xs font-semibold uppercase tracking-widest mb-4">
+              {t('heroBadge')}
+            </span>
+            <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight leading-tight mb-4">
+              {t('heroTitle')}
+            </h1>
+            <p className="text-rose-100/90 text-sm sm:text-base leading-relaxed mb-6">
+              {t('heroSubtitle')}
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <a
+                href="#catalog"
+                className="px-6 py-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-stone-950 font-bold text-sm shadow-md transition-colors"
+              >
+                {t('shopNow')}
+              </a>
+              <Link
+                href="/track?id=TRK-KC-1001"
+                className="px-5 py-3 rounded-xl bg-white/10 hover:bg-white/20 border border-white/25 text-white font-semibold text-sm transition-colors"
+              >
+                📦 {t('trackOrderNav')}
+              </Link>
+              <Link
+                href="/admin"
+                className="px-5 py-3 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-300/40 text-emerald-100 font-semibold text-sm transition-colors"
+              >
+                📊 {lang === 'hi' ? 'एडमिन पैनल और स्टॉक' : 'Admin Stock & Analytics'}
+              </Link>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3 w-full md:w-auto max-w-md">
+            <img
+              src="/products/kurti2.svg"
+              alt="Festive Kurti"
+              className="w-28 sm:w-32 aspect-[4/5] rounded-2xl object-cover border-2 border-amber-300/40 shadow-lg"
+            />
+            <img
+              src="/products/bag1.svg"
+              alt="Handcrafted Bag"
+              className="w-28 sm:w-32 aspect-[4/5] rounded-2xl object-cover border-2 border-amber-300/40 shadow-lg translate-y-3"
+            />
+            <img
+              src="/products/acc1.svg"
+              alt="Oxidized Jhumka"
+              className="w-28 sm:w-32 aspect-[4/5] rounded-2xl object-cover border-2 border-amber-300/40 shadow-lg"
+            />
+          </div>
         </div>
       </section>
 
-      {/* Main Catalog Section */}
-      <section id="catalog" aria-labelledby="catalog-heading" className="space-y-5 scroll-mt-20">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div>
-            <h2 id="catalog-heading" className="text-xl sm:text-2xl font-bold text-gray-900">
-              {t('catalogHeading')}
-            </h2>
-            <p className="text-xs sm:text-sm text-gray-500">{t('featuredSubheading')}</p>
+      {/* Interactive Promo Code Bar (1-Tap Apply) */}
+      <section className="bg-white border-b border-stone-200 py-3.5 px-4">
+        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-xs sm:text-sm font-bold text-stone-800">
+            <span className="text-base">🎟️</span>
+            <span>
+              {lang === 'hi'
+                ? 'फेस्टिव डिस्काउंट कूपन (क्लिक करके कार्ट में लगाएं):'
+                : 'Festive Promo Codes (Tap any code to auto-apply in Cart):'}
+            </span>
           </div>
-
-          {products && (
-            <p className="text-xs sm:text-sm text-gray-600 font-medium">
-              {t('showingResults')} <span className="font-bold text-gray-900">{paginated.items.length}</span> {t('of')}{' '}
-              <span className="font-bold text-gray-900">{filtered.length}</span> {t('itemsLabel')}
-            </p>
-          )}
-        </div>
-
-        {/* Search, Category Filter, Sort & Stock Controls */}
-        <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm space-y-4">
-          <div className="flex flex-col md:flex-row gap-3">
-            {/* Search Input */}
-            <div className="relative flex-1">
-              <label htmlFor="catalog-search" className="sr-only">
-                {t('search')}
-              </label>
-              <input
-                id="catalog-search"
-                type="search"
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder={t('search')}
-                className="w-full border border-gray-300 rounded-xl pl-4 pr-9 py-2.5 text-sm bg-gray-50/50 focus:bg-white focus:border-brand focus:outline-none"
-              />
-              {q && (
+          <div className="flex flex-wrap items-center gap-2">
+            {[
+              { code: 'FIRST10', label: 'FIRST10 • 10% OFF' },
+              { code: 'DIWALI20', label: 'DIWALI20 • 20% OFF (₹1,299+)' },
+              { code: 'JAIPUR15', label: 'JAIPUR15 • 15% OFF (₹999+)' },
+              { code: 'ROYAL250', label: 'ROYAL250 • Flat ₹250 OFF' },
+            ].map((c) => {
+              const active = appliedCoupon === c.code;
+              return (
                 <button
+                  key={c.code}
                   type="button"
-                  onClick={() => setQ('')}
-                  aria-label={t('clearSearch')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 text-sm"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-
-            {/* Sort Selector */}
-            <div className="flex items-center gap-2">
-              <label htmlFor="catalog-sort" className="text-xs font-semibold text-gray-600 whitespace-nowrap">
-                {t('sortBy')}:
-              </label>
-              <select
-                id="catalog-sort"
-                value={sort}
-                onChange={(e) => setSort(e.target.value as SortOption)}
-                className="border border-gray-300 rounded-xl px-3 py-2.5 text-sm bg-white focus:border-brand focus:outline-none"
-              >
-                <option value="featured">{t('sortFeatured')}</option>
-                <option value="price-asc">{t('sortPriceAsc')}</option>
-                <option value="price-desc">{t('sortPriceDesc')}</option>
-                <option value="newest">{t('sortNewest')}</option>
-                <option value="name-asc">{t('sortNameAsc')}</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Category Pills & Stock Checkbox */}
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-            <div className="flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label="Product Categories">
-              {CATS.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  role="tab"
-                  aria-selected={cat === c}
-                  onClick={() => setCat(c)}
-                  className={`whitespace-nowrap text-xs sm:text-sm font-semibold rounded-full px-4 py-1.5 border transition-colors ${
-                    cat === c
-                      ? 'bg-brand text-white border-brand shadow-sm'
-                      : 'bg-white text-gray-700 border-gray-200 hover:bg-brand-light'
+                  onClick={() => setAppliedCoupon(active ? '' : c.code)}
+                  className={`px-3 py-1 rounded-full text-xs font-mono font-bold border transition ${
+                    active
+                      ? 'bg-emerald-700 text-white border-emerald-700 shadow-sm'
+                      : 'bg-amber-50 hover:bg-amber-100 text-rose-900 border-amber-300'
                   }`}
                 >
-                  {t(c)} ({categoryCounts[c] ?? 0})
+                  {active ? `✓ ${c.code} Applied` : c.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* Catalog Controls & Grid */}
+      <main id="catalog" className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8">
+        <div className="bg-white rounded-2xl border border-stone-200 p-4 mb-8 shadow-sm space-y-4">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            {/* Category Tabs */}
+            <div className="flex flex-wrap gap-2" role="tablist" aria-label="Product Categories">
+              {(
+                [
+                  { id: 'all', label: t('allCategories') },
+                  { id: 'kurti', label: t('categoryKurti') },
+                  { id: 'bag', label: t('categoryBag') },
+                  { id: 'accessory', label: t('categoryAccessory') },
+                ] as const
+              ).map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={category === tab.id}
+                  onClick={() => setCategory(tab.id)}
+                  className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-colors ${
+                    category === tab.id
+                      ? 'bg-rose-800 text-white shadow-sm'
+                      : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
+                  }`}
+                >
+                  {tab.label}
                 </button>
               ))}
             </div>
 
-            <label className="inline-flex items-center gap-2 text-xs sm:text-sm font-medium text-gray-700 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={inStockOnly}
-                onChange={(e) => setInStockOnly(e.target.checked)}
-                className="rounded border-gray-300 text-brand focus:ring-brand w-4 h-4"
-              />
-              <span>{t('inStockOnly')}</span>
-            </label>
+            {/* Search, Sort & In-Stock Toggle */}
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="relative flex-1 sm:w-64">
+                <input
+                  type="search"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder={t('searchPlaceholder')}
+                  aria-label="Search products"
+                  className="w-full pl-9 pr-3 py-2 rounded-xl border border-stone-300 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
+                />
+                <svg
+                  className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M21 21l-4.35-4.35m0 0A7.5 7.5 0 103.5 10.5a7.5 7.5 0 0013.15 6.15z"
+                  />
+                </svg>
+              </div>
+
+              <select
+                value={sort}
+                onChange={(e) => setSort(e.target.value as SortOption)}
+                aria-label="Sort products"
+                className="px-3 py-2 rounded-xl border border-stone-300 bg-white text-xs sm:text-sm font-medium text-stone-700 focus:outline-none focus:ring-2 focus:ring-rose-500"
+              >
+                <option value="featured">{t('sortFeatured')}</option>
+                <option value="price-asc">{t('sortPriceLowHigh')}</option>
+                <option value="price-desc">{t('sortPriceHighLow')}</option>
+                <option value="rating">{t('sortRating')}</option>
+              </select>
+
+              <label className="inline-flex items-center gap-2 text-xs sm:text-sm font-medium text-stone-700 cursor-pointer select-none px-2 py-1">
+                <input
+                  type="checkbox"
+                  checked={inStockOnly}
+                  onChange={(e) => setInStockOnly(e.target.checked)}
+                  className="rounded border-stone-300 text-rose-800 focus:ring-rose-500"
+                />
+                <span>{t('inStockOnly')}</span>
+              </label>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between text-xs text-stone-500 pt-2 border-t border-stone-100">
+            <span>{t('resultsFound', { count: filtered.length })}</span>
+            <span>
+              {t('page')} {paginated.currentPage} {t('of')} {paginated.totalPages}
+            </span>
           </div>
         </div>
 
-        {/* Error State */}
-        {error && (
-          <div
-            role="alert"
-            className="bg-red-50 border border-red-200 rounded-2xl p-6 text-center space-y-3"
-          >
-            <p className="text-red-700 font-medium">{t('errorGeneric')}</p>
-            <button
-              type="button"
-              onClick={loadProducts}
-              className="bg-brand text-white text-sm font-semibold px-5 py-2 rounded-xl hover:bg-brand-dark"
-            >
-              {t('retry')}
-            </button>
-          </div>
-        )}
-
-        {/* Loading Skeleton State */}
-        {!products && !error && (
-          <div aria-live="polite" className="space-y-4">
-            <p className="text-gray-500 text-sm">{t('loading')}</p>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
-                <div key={n} className="bg-white rounded-2xl border p-3 space-y-3 animate-pulse">
-                  <div className="aspect-square bg-gray-200 rounded-xl" />
-                  <div className="h-4 bg-gray-200 rounded w-3/4" />
-                  <div className="h-4 bg-gray-200 rounded w-1/3" />
-                  <div className="h-9 bg-gray-200 rounded-xl" />
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Empty Filter State */}
-        {products && filtered.length === 0 && (
-          <div className="bg-white rounded-2xl border border-gray-200 p-10 text-center space-y-3">
-            <p className="text-3xl" aria-hidden="true">🔍</p>
-            <p className="text-gray-600 font-medium">{t('noProducts')}</p>
-            <button
-              type="button"
-              onClick={resetFilters}
-              className="inline-block bg-brand text-white text-sm font-semibold px-5 py-2 rounded-xl hover:bg-brand-dark"
-            >
-              {t('resetFilters')}
-            </button>
-          </div>
-        )}
-
         {/* Product Grid */}
-        {products && paginated.items.length > 0 && (
-          <div key={lang} className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-5">
+        {paginated.items.length === 0 ? (
+          <div className="bg-white rounded-2xl border border-stone-200 p-12 text-center">
+            <p className="text-stone-600 font-medium mb-3">
+              No matching ethnic wear items found.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setCategory('all');
+                setQuery('');
+                setInStockOnly(false);
+              }}
+              className="px-4 py-2 rounded-xl bg-rose-800 text-white text-xs font-semibold"
+            >
+              Reset Filters
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {paginated.items.map((p) => (
-              <ProductCard key={p.id} product={p} />
+              <ProductCard key={p.id} p={p} />
             ))}
           </div>
         )}
 
         {/* Pagination Controls */}
-        {products && paginated.totalPages > 1 && (
-          <nav
-            aria-label="Catalog Pagination"
-            className="flex items-center justify-center gap-3 pt-4"
-          >
+        {paginated.totalPages > 1 && (
+          <div className="mt-10 flex items-center justify-center gap-3">
             <button
               type="button"
               disabled={paginated.currentPage <= 1}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              className="px-4 py-2 text-sm font-semibold rounded-xl border bg-white hover:bg-brand-light disabled:opacity-40 disabled:cursor-not-allowed"
+              onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+              className="px-4 py-2 rounded-xl border border-stone-300 bg-white text-xs font-semibold text-stone-700 disabled:opacity-40 hover:bg-stone-50"
             >
-              ← {t('prevPage')}
+              ← {t('previous')}
             </button>
-            <span className="text-sm font-medium text-gray-700">
-              {t('page')} <span className="font-bold">{paginated.currentPage}</span> {t('of')}{' '}
-              <span className="font-bold">{paginated.totalPages}</span>
+            <span className="text-xs font-bold text-stone-700 px-3 py-2">
+              {t('page')} {paginated.currentPage} {t('of')} {paginated.totalPages}
             </span>
             <button
               type="button"
               disabled={paginated.currentPage >= paginated.totalPages}
-              onClick={() => setPage((p) => Math.min(paginated.totalPages, p + 1))}
-              className="px-4 py-2 text-sm font-semibold rounded-xl border bg-white hover:bg-brand-light disabled:opacity-40 disabled:cursor-not-allowed"
+              onClick={() => setPage((prev) => Math.min(paginated.totalPages, prev + 1))}
+              className="px-4 py-2 rounded-xl border border-stone-300 bg-white text-xs font-semibold text-stone-700 disabled:opacity-40 hover:bg-stone-50"
             >
-              {t('nextPage')} →
+              {t('next')} →
             </button>
-          </nav>
+          </div>
         )}
-      </section>
+      </main>
+
+      <Footer />
     </div>
   );
 }

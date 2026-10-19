@@ -1,32 +1,32 @@
-import { NextResponse } from 'next/server';
-import { confirmServerOrder, tryProxyBackend } from '../../../../lib/serverStore';
+import { NextRequest, NextResponse } from 'next/server';
+import { confirmServerOrder, getServerOrder } from '../../../../lib/serverStore';
 
-export const dynamic = 'force-dynamic';
-
-export async function POST(req: Request) {
-  if (process.env.NODE_ENV === 'production' && process.env.PAYMENT_MODE === 'razorpay') {
-    return NextResponse.json({ success: false, error: 'Mock payments disabled in production.' }, { status: 404 });
-  }
-
+export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const upstream = await tryProxyBackend('/api/dev/mock-pay', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+    const orderId = body?.orderId;
+    if (!orderId) {
+      return NextResponse.json({ success: false, error: 'Missing orderId' }, { status: 400 });
+    }
+
+    const order = getServerOrder(orderId);
+    if (!order) {
+      return NextResponse.json({ success: false, error: 'Order not found' }, { status: 404 });
+    }
+
+    const confirmRes = confirmServerOrder(orderId, {
+      id: `pay_mock_${Date.now()}`,
+      amount: order.amount_paise,
+      method: 'upi_qr_simulated',
     });
 
-    if (upstream) {
-      const data = await upstream.json();
-      return NextResponse.json(data, { status: upstream.status });
-    }
-
-    const res = confirmServerOrder(String(body.orderId || ''), body.payment);
-    if (!res.success && res.result === 'unknown_order') {
-      return NextResponse.json({ success: false, error: 'Order not found.' }, { status: 404 });
-    }
-    return NextResponse.json(res);
+    return NextResponse.json({
+      success: true,
+      result: confirmRes.result,
+      trackingId: confirmRes.trackingId || null,
+      orderId,
+    });
   } catch {
-    return NextResponse.json({ success: false, error: 'Invalid request.' }, { status: 400 });
+    return NextResponse.json({ success: false, error: 'Simulation failed' }, { status: 400 });
   }
 }

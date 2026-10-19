@@ -46,6 +46,8 @@ const createOrderSchema = {
           },
         },
       },
+      couponCode: { type: ['string', 'null'], maxLength: 40 },
+      idempotencyKey: { type: ['string', 'null'], maxLength: 128 },
     },
   },
 };

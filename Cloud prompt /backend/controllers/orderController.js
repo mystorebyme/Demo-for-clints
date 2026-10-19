@@ -6,6 +6,31 @@ const { createGatewayOrder } = require('../services/razorpay');
 const { confirmOrder } = require('../services/orderService');
 const { getCurrentTier, TIER_DESCRIPTIONS } = require('../services/fallbackService');
 
+const COUPONS = {
+  FIRST10: { type: 'PERCENT', value: 10, minPaise: 0, maxDiscountPaise: 50000 },
+  DIWALI20: { type: 'PERCENT', value: 20, minPaise: 129900, maxDiscountPaise: 100000 },
+  JAIPUR15: { type: 'PERCENT', value: 15, minPaise: 99900, maxDiscountPaise: 75000 },
+  ROYAL250: { type: 'FLAT', value: 25000, minPaise: 179900, maxDiscountPaise: 25000 },
+};
+
+function computeCouponDiscount(rawCode, subtotalPaise) {
+  if (!rawCode || !String(rawCode).trim()) {
+    return { couponCode: null, discountPaise: 0 };
+  }
+  const code = String(rawCode).trim().toUpperCase();
+  const c = COUPONS[code];
+  if (!c || subtotalPaise < c.minPaise) {
+    return { couponCode: null, discountPaise: 0 };
+  }
+  let discountPaise =
+    c.type === 'PERCENT' ? Math.round((subtotalPaise * c.value) / 100) : c.value;
+  if (c.maxDiscountPaise > 0) {
+    discountPaise = Math.min(discountPaise, c.maxDiscountPaise);
+  }
+  discountPaise = Math.min(discountPaise, Math.max(0, subtotalPaise - 100));
+  return { couponCode: code, discountPaise };
+}
+
 async function listProducts() {
   const { rows } = await pool.query(
     'SELECT id, name, name_hi, category, price_paise, image_url, stock FROM products ORDER BY id'
@@ -62,22 +87,27 @@ async function validateCart(req) {
     });
   }
 
+  const { couponCode, discountPaise } = computeCouponDiscount(req.body?.couponCode, subtotalPaise);
+  const totalPaise = Math.max(0, subtotalPaise - discountPaise);
+
   return {
     success: true,
     items: validated,
     subtotalPaise,
+    discountPaise,
+    couponCode,
     deliveryPaise: 0,
-    totalPaise: subtotalPaise,
+    totalPaise,
     currency: 'INR',
     warnings,
   };
 }
 
 async function createOrder(req, reply) {
-  const { customer, items } = req.body;
+  const { customer, items, couponCode: requestedCoupon } = req.body;
   const idempotencyKey = req.headers['x-idempotency-key']
     ? String(req.headers['x-idempotency-key']).slice(0, 120)
-    : null;
+    : req.body?.idempotencyKey || null;
 
   const currentTier = await getCurrentTier();
   if (currentTier === 4) {
@@ -99,6 +129,7 @@ async function createOrder(req, reply) {
         success: true,
         idempotentReplay: true,
         orderId: ex.order_id,
+        invoiceNumber: `INV-KC-2026-${ex.order_id.slice(-6)}`,
         gatewayOrderId: ex.gateway_order_id,
         amountPaise: ex.amount_paise,
         currency: 'INR',
@@ -106,6 +137,7 @@ async function createOrder(req, reply) {
         paymentMode: env.PAYMENT_MODE,
         razorpayKeyId: env.PAYMENT_MODE === 'razorpay' ? env.RAZORPAY_KEY_ID : null,
         expiresInMinutes: env.ORDER_EXPIRY_MINUTES,
+        expiresInSeconds: env.ORDER_EXPIRY_MINUTES * 60,
         expiresAt: ex.expires_at,
         qrPayload: ex.qr_payload,
       };
@@ -126,18 +158,22 @@ async function createOrder(req, reply) {
     return reply.code(400).send({ success: false, error: 'One or more products not found.' });
   }
 
-  let amountPaise = 0;
+  let subtotalPaise = 0;
   const orderItems = [];
   for (const p of products) {
     const qty = qtyById.get(p.id);
     if (qty > p.stock) {
       return reply.code(409).send({ success: false, error: `Not enough stock for ${p.name}.` });
     }
-    amountPaise += p.price_paise * qty;
+    subtotalPaise += p.price_paise * qty;
     orderItems.push({ id: p.id, name: p.name, name_hi: p.name_hi, qty, price_paise: p.price_paise });
   }
 
+  const { couponCode, discountPaise } = computeCouponDiscount(requestedCoupon, subtotalPaise);
+  const amountPaise = Math.max(100, subtotalPaise - discountPaise);
+
   const orderId = `ORD${crypto.randomBytes(8).toString('hex').toUpperCase()}`;
+  const invoiceNumber = `INV-KC-2026-${orderId.slice(-6)}`;
 
   const sessionLockKey = `lock:qr_session:${orderId}`;
   await redis.set(sessionLockKey, String(amountPaise), 'EX', env.ORDER_EXPIRY_MINUTES * 60, 'NX').catch(() => {});
@@ -185,7 +221,11 @@ async function createOrder(req, reply) {
   return {
     success: true,
     orderId,
+    invoiceNumber,
     gatewayOrderId: gatewayOrder.id,
+    subtotalPaise,
+    discountPaise,
+    couponCode,
     amountPaise,
     currency: 'INR',
     fallbackTier: activeTier,
@@ -209,6 +249,7 @@ async function getOrderStatus(req, reply) {
   return {
     success: true,
     orderId: o.order_id,
+    invoiceNumber: `INV-KC-2026-${o.order_id.slice(-6)}`,
     status: o.status,
     amountPaise: o.amount_paise,
     items: o.items,
@@ -245,6 +286,7 @@ async function trackOrder(req, reply) {
   return {
     success: true,
     orderId: o.order_id,
+    invoiceNumber: `INV-KC-2026-${o.order_id.slice(-6)}`,
     trackingId: o.tracking_id || null,
     paymentStatus: o.status,
     fulfillmentStatus: o.fulfillment_status || (o.status === 'CONFIRMED' ? 'ORDER_PLACED' : 'PENDING_PAYMENT'),

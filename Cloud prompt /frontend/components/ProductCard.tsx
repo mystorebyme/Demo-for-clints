@@ -1,134 +1,179 @@
 'use client';
-import { useState } from 'react';
+
+import React, { useState } from 'react';
 import Link from 'next/link';
-import { Product, rupees, useCart, useT } from '../lib/store';
+import { Product } from '../lib/catalog';
+import { buildWhatsAppShareUrl, rupees, useStore } from '../lib/store';
 
-const EMOJI: Record<string, string> = { kurti: '👗', bag: '👜', accessory: '💍' };
-
-export default function ProductCard({ product }: { product: Product }) {
-  const { t, lang } = useT();
-  const add = useCart((s) => s.add);
-  const [imgOk, setImgOk] = useState(true);
-  const [selectedSize, setSelectedSize] = useState<string>(
-    (product.sizes && product.sizes[0]) || (product.category === 'kurti' ? 'M' : 'Free Size')
-  );
+export default function ProductCard({
+  p,
+}: {
+  p: Product & { sold_count?: number };
+}) {
+  const { lang, addToCart, wishlist, toggleWishlist, t } = useStore();
   const [justAdded, setJustAdded] = useState(false);
 
-  const title = lang === 'hi' && product.name_hi ? product.name_hi : product.name;
-  const material =
-    lang === 'hi' && product.fabric_or_material_hi
-      ? product.fabric_or_material_hi
-      : product.fabric_or_material;
+  const displayName = lang === 'hi' && p.name_hi ? p.name_hi : p.name;
+  const displayDesc = lang === 'hi' && p.description_hi ? p.description_hi : p.description;
+  const displayBadge = lang === 'hi' && p.badge_hi ? p.badge_hi : p.badge;
 
-  const imgSrc = (product.image_url || '').replace(/\.webp$/i, '.svg');
-  const sizes = product.sizes || (product.category === 'kurti' ? ['S', 'M', 'L', 'XL'] : ['Free Size']);
+  const isOutOfStock = p.stock <= 0;
+  const isLowStock = p.stock > 0 && p.stock <= 5;
+  const isWishlisted = wishlist.includes(p.id);
 
-  const handleAdd = () => {
-    if (product.stock <= 0) return;
-    add(product, 1, selectedSize);
+  const discountPct =
+    p.original_price_paise && p.original_price_paise > p.price_paise
+      ? Math.round(((p.original_price_paise - p.price_paise) / p.original_price_paise) * 100)
+      : 0;
+
+  const handleQuickAdd = () => {
+    if (isOutOfStock) return;
+    addToCart({
+      id: p.id,
+      name: p.name,
+      name_hi: p.name_hi,
+      price_paise: p.price_paise,
+      qty: 1,
+      size: p.sizes?.[0] || 'Free Size',
+      image_url: p.image_url,
+      category: p.category,
+    });
     setJustAdded(true);
     setTimeout(() => setJustAdded(false), 1200);
   };
 
   return (
-    <article className="bg-white rounded-2xl shadow-sm border border-gray-200/80 hover:shadow-md transition-shadow overflow-hidden flex flex-col">
-      <Link
-        href={`/products/${product.id}`}
-        className="relative aspect-square bg-gradient-to-br from-pink-50 to-rose-100 flex items-center justify-center overflow-hidden group"
-      >
-        {imgOk ? (
-          // eslint-disable-next-line @next/next/no-img-element
+    <article
+      data-testid={`product-card-${p.id}`}
+      className="group bg-white rounded-2xl border border-stone-200/90 overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col"
+    >
+      <div className="relative aspect-[4/5] bg-stone-100 overflow-hidden">
+        <Link href={`/products/${p.id}`} className="block w-full h-full">
           <img
-            src={imgSrc}
-            alt={title}
+            src={p.image_url}
+            alt={displayName}
             loading="lazy"
-            onError={() => setImgOk(false)}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
           />
-        ) : (
-          <span className="text-6xl" role="img" aria-label={product.category}>
-            {EMOJI[product.category] || '🛍️'}
-          </span>
-        )}
+        </Link>
 
-        {/* Top Badges */}
-        <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between gap-1 pointer-events-none">
-          <span className="bg-white/90 backdrop-blur text-gray-700 text-[11px] font-semibold px-2.5 py-0.5 rounded-full border border-gray-200">
-            {t(product.category)}
-          </span>
-          {product.stock === 0 ? (
-            <span className="bg-red-600 text-white text-[11px] font-semibold px-2.5 py-0.5 rounded-full">
-              {t('outOfStock')}
+        {/* Top Left Badges */}
+        <div className="absolute top-3 left-3 flex flex-col gap-1.5">
+          {displayBadge && (
+            <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-rose-800 text-white shadow-sm">
+              {displayBadge}
             </span>
-          ) : product.stock <= 10 ? (
-            <span className="bg-amber-500 text-white text-[11px] font-semibold px-2.5 py-0.5 rounded-full">
-              {t('lowStock', { count: product.stock })}
-            </span>
-          ) : (
-            <span className="bg-emerald-600/90 text-white text-[11px] font-semibold px-2.5 py-0.5 rounded-full">
-              {t('inStock')}
+          )}
+          {discountPct > 0 && (
+            <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-400 text-stone-950 shadow-sm w-fit">
+              {discountPct}% OFF
             </span>
           )}
         </div>
-      </Link>
 
-      <div className="p-4 flex flex-col gap-2 flex-1">
-        <div className="flex items-start justify-between gap-2">
-          <Link href={`/products/${product.id}`} className="hover:text-brand transition-colors">
-            <h3 className="text-sm sm:text-base font-bold text-gray-900 leading-snug line-clamp-2">
-              {title}
-            </h3>
-          </Link>
-        </div>
-
-        {material && (
-          <p className="text-xs text-gray-500 line-clamp-1">{material}</p>
-        )}
-
-        <div className="flex items-baseline justify-between pt-1">
-          <p className="text-lg font-extrabold text-brand">{rupees(product.price_paise)}</p>
-          <Link
-            href={`/products/${product.id}`}
-            className="text-xs font-medium text-gray-500 hover:text-brand underline"
-          >
-            {t('viewDetails')}
-          </Link>
-        </div>
-
-        {/* Quick Size Selector if multiple sizes exist */}
-        {sizes.length > 1 && (
-          <div className="flex items-center gap-1.5 pt-1 flex-wrap" role="group" aria-label={t('selectSize')}>
-            {sizes.map((sz) => (
-              <button
-                key={sz}
-                type="button"
-                onClick={() => setSelectedSize(sz)}
-                className={`text-[11px] font-semibold px-2 py-0.5 rounded border transition-colors ${
-                  selectedSize === sz
-                    ? 'bg-brand text-white border-brand'
-                    : 'bg-gray-50 text-gray-700 border-gray-200 hover:border-brand'
-                }`}
-              >
-                {sz}
-              </button>
-            ))}
-          </div>
-        )}
-
+        {/* Top Right Wishlist Heart Button */}
         <button
           type="button"
-          disabled={product.stock === 0}
-          onClick={handleAdd}
-          className={`mt-auto w-full text-sm font-semibold rounded-xl py-2.5 px-3 transition-colors ${
-            product.stock === 0
-              ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
-              : justAdded
-              ? 'bg-emerald-600 text-white'
-              : 'bg-brand text-white hover:bg-brand-dark'
+          onClick={() => toggleWishlist(p.id)}
+          aria-label={isWishlisted ? 'Remove from Wishlist' : 'Add to Wishlist'}
+          className={`absolute top-3 right-3 w-9 h-9 rounded-full flex items-center justify-center shadow-sm transition-transform active:scale-90 ${
+            isWishlisted
+              ? 'bg-rose-600 text-white'
+              : 'bg-white/90 hover:bg-white text-stone-600 hover:text-rose-600'
           }`}
         >
-          {product.stock === 0 ? t('outOfStock') : justAdded ? t('addedToCart') : t('addToCart')}
+          {isWishlisted ? '♥' : '♡'}
         </button>
+
+        {/* Stock Status Pill */}
+        <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between gap-2">
+          {isOutOfStock ? (
+            <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-stone-900/90 text-white">
+              {t('outOfStock')}
+            </span>
+          ) : isLowStock ? (
+            <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-600/95 text-white">
+              {t('lowStock', { count: p.stock })}
+            </span>
+          ) : (
+            <span className="px-2.5 py-1 rounded-full text-[11px] font-medium bg-white/90 text-emerald-800 backdrop-blur-sm">
+              ● {t('inStock', { count: p.stock })}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Details */}
+      <div className="p-4 flex-1 flex flex-col justify-between gap-3">
+        <div>
+          <div className="flex items-center justify-between text-xs text-stone-500 mb-1">
+            <span className="uppercase tracking-wider font-semibold text-rose-800">
+              {p.category === 'kurti'
+                ? t('categoryKurti')
+                : p.category === 'bag'
+                  ? t('categoryBag')
+                  : t('categoryAccessory')}
+            </span>
+            <span className="inline-flex items-center gap-1 font-medium text-amber-700">
+              ★ {p.rating.toFixed(1)} <span className="text-stone-400">({p.reviews_count})</span>
+            </span>
+          </div>
+
+          <Link
+            href={`/products/${p.id}`}
+            className="block font-bold text-stone-900 text-base hover:text-rose-800 transition-colors line-clamp-1"
+          >
+            {displayName}
+          </Link>
+
+          <p className="text-xs text-stone-500 mt-1 line-clamp-2 leading-relaxed">{displayDesc}</p>
+        </div>
+
+        <div className="pt-2 border-t border-stone-100">
+          <div className="flex items-baseline justify-between mb-2">
+            <div className="flex items-baseline gap-2">
+              <span className="text-lg font-extrabold text-stone-900">{rupees(p.price_paise)}</span>
+              {p.original_price_paise && p.original_price_paise > p.price_paise && (
+                <span className="text-xs text-stone-400 line-through">
+                  {rupees(p.original_price_paise)}
+                </span>
+              )}
+            </div>
+            <a
+              href={buildWhatsAppShareUrl(p)}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={t('shareOnWhatsApp')}
+              className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-2 py-1 rounded-lg transition"
+            >
+              <span>💬</span>
+              <span>WhatsApp</span>
+            </a>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <Link
+              href={`/products/${p.id}`}
+              className="text-center py-2 px-3 rounded-xl border border-stone-300 text-stone-700 hover:bg-stone-50 text-xs font-semibold transition-colors"
+            >
+              {t('viewDetails')}
+            </Link>
+            <button
+              type="button"
+              disabled={isOutOfStock}
+              onClick={handleQuickAdd}
+              className={`py-2 px-3 rounded-xl text-xs font-semibold transition-colors ${
+                isOutOfStock
+                  ? 'bg-stone-200 text-stone-400 cursor-not-allowed'
+                  : justAdded
+                    ? 'bg-emerald-700 text-white'
+                    : 'bg-rose-800 hover:bg-rose-900 text-white'
+              }`}
+            >
+              {isOutOfStock ? t('outOfStock') : justAdded ? `✓ ${t('addedToCart')}` : t('addToCart')}
+            </button>
+          </div>
+        </div>
       </div>
     </article>
   );

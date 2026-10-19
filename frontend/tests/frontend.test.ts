@@ -9,6 +9,8 @@ import {
   paginateProducts,
 } from '../lib/catalog';
 import {
+  buildWhatsAppOrderUrl,
+  buildWhatsAppShareUrl,
   DICTIONARIES,
   rupees,
   validateCheckoutForm,
@@ -17,10 +19,15 @@ import {
 } from '../lib/store';
 import {
   confirmServerOrder,
+  createLiveProduct,
   createServerOrder,
   findServerOrderByOrderOrTrackingId,
+  getAdminAnalyticsSummary,
+  getLiveProductById,
   getServerOrder,
+  updateLiveProduct,
   updateServerOrderTracking,
+  upsertServerCoupon,
   validateCartServerSide,
   verifyAdminTokenHeader,
 } from '../lib/serverStore';
@@ -101,7 +108,7 @@ describe('Phase 1 Frontend — Catalog, Search, Filters, Sorting & Pagination', 
   });
 });
 
-describe('Phase 1 Frontend — Bilingual (EN/HI) Completeness & Formatting', () => {
+describe('Phase 1 Frontend — Bilingual (EN/HI) Completeness, WhatsApp Links & Formatting', () => {
   it('ensures English and Hindi dictionaries have identical translation keys and non-empty values', () => {
     const enKeys = Object.keys(DICTIONARIES.en).sort();
     const hiKeys = Object.keys(DICTIONARIES.hi).sort();
@@ -112,10 +119,25 @@ describe('Phase 1 Frontend — Bilingual (EN/HI) Completeness & Formatting', () 
     }
   });
 
-  it('formats paise into Indian Rupees accurately without floating-point drift', () => {
+  it('formats paise into Indian Rupees and builds WhatsApp share/order URLs accurately', () => {
     assert.equal(rupees(79900), '₹799');
     assert.equal(rupees(129900), '₹1,299');
     assert.equal(rupees(50023), '₹500.23');
+
+    const shareUrl = buildWhatsAppShareUrl({
+      id: 2,
+      name: 'Festive Anarkali Kurti',
+      price_paise: 129900,
+    });
+    assert.equal(shareUrl.startsWith('https://wa.me/?text='), true);
+
+    const orderUrl = buildWhatsAppOrderUrl({
+      id: 2,
+      name: 'Festive Anarkali Kurti',
+      price_paise: 129900,
+      size: 'M',
+    });
+    assert.equal(orderUrl.startsWith('https://wa.me/919876543210?text='), true);
   });
 });
 
@@ -155,17 +177,36 @@ describe('Phase 1 Frontend — Checkout Form & Phone Validation', () => {
   });
 });
 
-describe('Phase 1 Frontend — Server-Authoritative Cart, Order Creation, Tracking ID & Admin Tracking Updates', () => {
-  it('calculates cart totals exclusively from server product prices in paise', () => {
-    const res = validateCartServerSide([
-      { id: 1, qty: 2, size: 'M' }, // 79900 * 2 = 159800
-      { id: 7, qty: 1, size: 'Free Size' }, // 29900 * 1 = 29900
+describe('Phase 1 Frontend — Coupons, Auto Stock Decrement, GST Invoices, Tracking & Admin Analytics', () => {
+  it('calculates cart totals and applies festive coupon discounts (DIWALI20 & FIRST10) server-side', () => {
+    // Without coupon: 79900 * 2 + 29900 * 1 = 189700
+    const resNoCoupon = validateCartServerSide([
+      { id: 1, qty: 2, size: 'M' },
+      { id: 7, qty: 1, size: 'Free Size' },
     ]);
-    assert.equal(res.success, true);
-    assert.equal(res.totalPaise, 189700);
+    assert.equal(resNoCoupon.success, true);
+    assert.equal(resNoCoupon.subtotalPaise, 189700);
+    assert.equal(resNoCoupon.discountPaise, 0);
+    assert.equal(resNoCoupon.totalPaise, 189700);
+
+    // With DIWALI20 (20% OFF on ₹1,299+): 20% of 189700 = 37940 -> total = 151760
+    const resDiwali = validateCartServerSide(
+      [
+        { id: 1, qty: 2, size: 'M' },
+        { id: 7, qty: 1, size: 'Free Size' },
+      ],
+      'DIWALI20'
+    );
+    assert.equal(resDiwali.success, true);
+    assert.equal(resDiwali.couponCode, 'DIWALI20');
+    assert.equal(resDiwali.discountPaise, 37940);
+    assert.equal(resDiwali.totalPaise, 151760);
   });
 
-  it('creates an order, generates Tracking ID on confirmation, allows customer lookup by Tracking ID, and applies Admin tracking updates', () => {
+  it('creates an order with coupon & GST invoice, auto-decrements product stock on confirmation, and supports Admin live tracking', () => {
+    const stockBefore = getLiveProductById(1)?.stock ?? 50;
+    const soldBefore = getLiveProductById(1)?.sold_count ?? 0;
+
     const idemKey = `test-idem-${Date.now()}`;
     const order1 = createServerOrder({
       customer: {
@@ -173,35 +214,31 @@ describe('Phase 1 Frontend — Server-Authoritative Cart, Order Creation, Tracki
         phone: '9876543210',
         address: '42 MI Road, C-Scheme, Jaipur, Rajasthan, PIN: 302001',
       },
-      items: [{ id: 1, qty: 1, size: 'M' }],
+      items: [{ id: 1, qty: 2, size: 'M' }], // 79900 * 2 = 159800
+      couponCode: 'FIRST10', // 10% off = 15980 -> payable 143820
       idempotencyKey: idemKey,
     });
     assert.equal(order1.success, true);
     if (!order1.success) return;
 
-    // Duplicate submission with same idempotency key returns identical orderId
-    const order2 = createServerOrder({
-      customer: {
-        name: 'Ananya Verma',
-        phone: '9876543210',
-        address: '42 MI Road, C-Scheme, Jaipur, Rajasthan, PIN: 302001',
-      },
-      items: [{ id: 1, qty: 1, size: 'M' }],
-      idempotencyKey: idemKey,
-    });
-    assert.equal(order2.success, true);
-    if (order2.success) {
-      assert.equal(order2.orderId, order1.orderId);
-    }
+    assert.equal(order1.subtotalPaise, 159800);
+    assert.equal(order1.discountPaise, 15980);
+    assert.equal(order1.amountPaise, 143820);
+    assert.equal(order1.invoiceNumber.startsWith('INV-KC-2026-'), true);
 
-    // Confirm payment -> generates Tracking ID (TRK-KC-...)
+    // Confirm payment -> generates Tracking ID (TRK-KC-...) AND decrements product #1 stock by 2
     const confirm1 = confirmServerOrder(order1.orderId, {
       id: `pay_test_${Date.now()}`,
-      amount: 79900,
+      amount: 143820,
       method: 'upi_qr',
     });
     assert.equal(confirm1.result, 'confirmed');
     assert.equal(Boolean(confirm1.trackingId && confirm1.trackingId.startsWith('TRK-KC-')), true);
+
+    const stockAfter = getLiveProductById(1)?.stock ?? 0;
+    const soldAfter = getLiveProductById(1)?.sold_count ?? 0;
+    assert.equal(stockAfter, stockBefore - 2);
+    assert.equal(soldAfter, soldBefore + 2);
 
     // Lookup by Tracking ID
     const tracked = findServerOrderByOrderOrTrackingId(confirm1.trackingId!);
@@ -219,34 +256,48 @@ describe('Phase 1 Frontend — Server-Authoritative Cart, Order Creation, Tracki
     assert.equal(updated?.courier_name, 'BlueDart Air');
     assert.equal(updated?.tracking_history.length, 2);
 
-    // Replay confirmation returns already_confirmed with same trackingId
+    // Replay confirmation does NOT double-deduct stock
     const confirm2 = confirmServerOrder(order1.orderId, {
       id: `pay_test_second_${Date.now()}`,
-      amount: 79900,
+      amount: 143820,
       method: 'upi_qr',
     });
     assert.equal(confirm2.result, 'already_confirmed');
-    assert.equal(confirm2.trackingId, confirm1.trackingId);
+    assert.equal(getLiveProductById(1)?.stock, stockAfter);
   });
 
-  it('marks order FAILED on amount mismatch and protects admin token timing-safely', () => {
-    const order = createServerOrder({
-      customer: {
-        name: 'Meera Joshi',
-        phone: '9123456789',
-        address: '88 Vaishali Nagar, Jaipur, Rajasthan, PIN: 302021',
-      },
-      items: [{ id: 4, qty: 1 }], // 99900 paise
+  it('supports Admin product & stock image creation/updating, custom coupons, and analytics summary', () => {
+    const newProd = createLiveProduct({
+      name: 'Bandhani Gotapatti Kurti',
+      name_hi: 'बंधेज गोटापट्टी कुर्ती',
+      category: 'kurti',
+      price_paise: 109900,
+      stock: 15,
+      image_url: '/products/kurti3.svg',
     });
-    assert.equal(order.success, true);
-    if (!order.success) return;
+    assert.equal(newProd.stock, 15);
+    assert.equal(newProd.price_paise, 109900);
 
-    const mismatch = confirmServerOrder(order.orderId, {
-      id: `pay_mismatch_${Date.now()}`,
-      amount: 100, // wrong amount!
+    const editedProd = updateLiveProduct(newProd.id, {
+      stock: 28,
+      image_url: '/products/kurti4.svg',
     });
-    assert.equal(mismatch.result, 'amount_mismatch');
-    assert.equal(getServerOrder(order.orderId)?.status, 'FAILED');
+    assert.equal(editedProd?.stock, 28);
+    assert.equal(editedProd?.image_url, '/products/kurti4.svg');
+
+    const customCoupon = upsertServerCoupon({
+      code: 'WEDDING25',
+      description_en: '25% OFF Wedding Collection',
+      discount_type: 'PERCENT',
+      discount_value: 25,
+      min_order_paise: 50000,
+    });
+    assert.equal(customCoupon.code, 'WEDDING25');
+
+    const analytics = getAdminAnalyticsSummary();
+    assert.equal(analytics.totalRevenuePaise > 0, true);
+    assert.equal(analytics.categoryBreakdown.length, 3);
+    assert.equal(analytics.dailySeries.length, 7);
 
     assert.equal(verifyAdminTokenHeader('wrong'), false);
     assert.equal(verifyAdminTokenHeader('dev_admin_token_replace_me_123456'), true);

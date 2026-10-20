@@ -1,0 +1,22 @@
+{
+  "name": "fashion-backend",
+  "version": "1.0.0",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "lint": "node --check server.js routes/index.js controllers/orderController.js controllers/webhookController.js controllers/adminController.js services/orderService.js services/fallbackService.js services/rateLimit.js services/razorpay.js services/socket.js services/telegram.js config/env.js config/db.js config/redis.js",
+    "test": "NODE_ENV=test USE_IN_MEMORY_STORE=1 node --test tests/backend.test.js"
+  },
+  "dependencies": {
+    "@fastify/cors": "^9.0.1",
+    "@fastify/helmet": "^11.1.1",
+    "axios": "^1.7.2",
+    "dotenv": "^16.4.5",
+    "fastify": "^4.28.1",
+    "ioredis": "^5.4.1",
+    "pg": "^8.12.0",
+    "socket.io": "^4.7.5"
+  }
+}
